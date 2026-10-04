@@ -10,6 +10,7 @@ import numpy as np
 
 from pymmd.boys import boys
 from pymmd.hermite import hermite_indices
+from pymmd.util import outer_powers
 
 if TYPE_CHECKING:
     from typing import Iterator
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from numpy import float64, int64
 
     from pymmd._typing import array
-    from pymmd.shell import ShellPairView
+    from pymmd.basis import ShellPairView
 
 
 @dataclass
@@ -61,17 +62,16 @@ def _auxiliary_coulomb_recurrence_indices(
             axis = next(axis for axis, value in enumerate(target) if value > 0)
             parent = list(target)
             parent[axis] -= 1
-            parent_index = (parent[0], parent[1], parent[2])
 
             topology[0, index] = target_indices[index]
-            topology[1, index] = order_maps[order - 1][parent_index]
+            topology[1, index] = order_maps[order - 1][tuple(parent)]  # type: ignore[index]
             topology[3, index] = axis
 
             if target[axis] > 1:
                 grandparent = parent.copy()
                 grandparent[axis] -= 1
-                grandparent_index = (grandparent[0], grandparent[1], grandparent[2])
-                topology[2, index] = order_maps[order - 2][grandparent_index]
+
+                topology[2, index] = order_maps[order - 2][tuple(grandparent)]  # type: ignore[index]
                 topology[4, index] = target[axis] - 1
 
         recurrence.append(topology)
@@ -94,7 +94,7 @@ def _coulomb_matrix_indices(
     hermite_map[tuple(hermite_all.T)] = np.arange(len(hermite_all), dtype=np.int64)
 
     hermite_sums = hermite_ab[:, None, :] + hermite_cd[None, :, :]
-    sum_indices = hermite_map[hermite_sums[..., 0], hermite_sums[..., 1], hermite_sums[..., 2]]
+    sum_indices = hermite_map[tuple(hermite_sums.transpose(2, 0, 1))]
     signs = np.where(np.sum(hermite_cd, axis=-1) % 2 == 0, 1.0, -1.0)
 
     return sum_indices, signs
@@ -133,13 +133,12 @@ def _auxiliary_coulomb_layers(
 ) -> Iterator[tuple[array[tuple[int, ...], int64], array[tuple[int, ...], float64]]]:
     """Yield each Hermite total-order layer in target-major order."""
     max_order = pair_ab.angular_momentum + pair_cd.angular_momentum
-    orders = np.arange(max_order + 1)
-
     displacement = pair_ab.position.reshape(-1, 3)[:, None] - pair_cd.position.reshape(-1, 3)[None, :]
-    argument = intermediates.rho * np.sum(displacement**2, axis=-1)
+    argument = np.einsum("...,...x,...x->...", intermediates.rho, displacement, displacement, optimize=True)
     boys_values = boys(argument, max_order)
 
-    source0 = (np.power.outer(-2 * intermediates.rho, orders) * boys_values)[..., None, :]
+    seeds = outer_powers(-2 * intermediates.rho, max_order, boys_values)
+    source0 = seeds[..., None, :]
     source1: array[tuple[int, ...], float64] | None = None
     yield np.asarray([0], dtype=np.int64), source0
 

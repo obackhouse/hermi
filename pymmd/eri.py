@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -11,10 +12,17 @@ from pymmd.hermite import expansion_matrix
 from pymmd.util import num_cartesian_indices
 
 if TYPE_CHECKING:
-    from numpy import float64
+    from numpy import float64, int64
 
     from pymmd._typing import array
-    from pymmd.shell import Basis, ShellPairView
+    from pymmd.basis import Basis, ShellPairView, ShellView
+
+
+@lru_cache(maxsize=None)
+def _shell_starts(shell: ShellView) -> array[tuple[int], int64]:
+    """Return primitive offsets for each contracted shell in a view."""
+    _, starts = np.unique(shell.shells.shell_indices[shell.indices], return_index=True)
+    return np.sort(starts)
 
 
 def electron_repulsion_integral(
@@ -23,7 +31,8 @@ def electron_repulsion_integral(
     expansion_ab: array[tuple[int, int, int], float64] | None = None,
     expansion_cd: array[tuple[int, int, int], float64] | None = None,
     intermediates: CoulombIntermediates | None = None,
-) -> array[tuple[int, int, int, int], float64]:
+    num_shells: tuple[int, int, int, int] = (1, 1, 1, 1),
+) -> array[tuple[int, int], float64]:
     r"""Compute a contracted Cartesian electron-repulsion integral block.
 
     Args:
@@ -32,6 +41,7 @@ def electron_repulsion_integral(
         expansion_ab: Expansion coefficients for the first shell pair.
         expansion_cd: Expansion coefficients for the second shell pair.
         intermediates: Precomputed intermediates for the shell pairs.
+        num_shells: Number of shells in each contracted shell pair.
 
     Returns:
         Contracted Cartesian ERI block.
@@ -56,20 +66,53 @@ def electron_repulsion_integral(
     # cd ij [q], cd kl [q] -> ab cd ij kl
     transformed = transformed @ expansion_cd.mT
 
+    num_primitive_i = len(pair_ab.shell_i)
+    num_primitive_j = len(pair_ab.shell_j)
+    num_primitive_k = len(pair_cd.shell_i)
+    num_primitive_l = len(pair_cd.shell_j)
+    num_cartesian_i = num_cartesian_indices(pair_ab.shell_i.angular_momentum)
+    num_cartesian_j = num_cartesian_indices(pair_ab.shell_j.angular_momentum)
+    num_cartesian_k = num_cartesian_indices(pair_cd.shell_i.angular_momentum)
+    num_cartesian_l = num_cartesian_indices(pair_cd.shell_j.angular_momentum)
+
     # a b, c d -> (a b) (c d)
     contraction = np.multiply.outer(pair_ab.coefficient.ravel(), pair_cd.coefficient.ravel())
     contraction /= intermediates.exponent_product
     contraction /= np.sqrt(intermediates.exponent_sum)
 
-    # [ab cd] ij kl, [ab cd] -> ij kl
-    contracted = np.tensordot(transformed, contraction, axes=([0, 1], [0, 1]))
+    # ab cd ij kl, ab cd -> ab cd ij kl
+    transformed *= contraction[..., None, None]
 
-    return (2 * np.pi**2.5) * contracted.reshape(  # type: ignore[no-any-return]
-        num_cartesian_indices(pair_ab.shell_i.angular_momentum),
-        num_cartesian_indices(pair_ab.shell_j.angular_momentum),
-        num_cartesian_indices(pair_cd.shell_i.angular_momentum),
-        num_cartesian_indices(pair_cd.shell_j.angular_momentum),
+    # ab cd ij kl -> a b c d i j k l
+    transformed = transformed.reshape(
+        num_primitive_i,
+        num_primitive_j,
+        num_primitive_k,
+        num_primitive_l,
+        num_cartesian_i,
+        num_cartesian_j,
+        num_cartesian_k,
+        num_cartesian_l,
     )
+
+    # Reduce over primitive shells to get contracted shells
+    contracted = np.add.reduceat(transformed, _shell_starts(pair_ab.shell_i), axis=0)
+    contracted = np.add.reduceat(contracted, _shell_starts(pair_ab.shell_j), axis=1)
+    contracted = np.add.reduceat(contracted, _shell_starts(pair_cd.shell_i), axis=2)
+    contracted = np.add.reduceat(contracted, _shell_starts(pair_cd.shell_j), axis=3)
+
+    # a b c d i j k l -> a i b j c k d l
+    contracted = contracted.transpose(0, 4, 1, 5, 2, 6, 3, 7)
+
+    # a i b j c k d l -> (a i) (b j) (c k) (d l)
+    unfolded = contracted.reshape(
+        num_shells[0] * num_cartesian_indices(pair_ab.shell_i.angular_momentum),
+        num_shells[1] * num_cartesian_indices(pair_ab.shell_j.angular_momentum),
+        num_shells[2] * num_cartesian_indices(pair_cd.shell_i.angular_momentum),
+        num_shells[3] * num_cartesian_indices(pair_cd.shell_j.angular_momentum),
+    )
+
+    return (2 * np.pi**2.5) * unfolded  # type: ignore[no-any-return]
 
 
 def electron_repulsion_integrals(basis: Basis) -> array[tuple[int, int, int, int], float64]:
@@ -86,14 +129,26 @@ def electron_repulsion_integrals(basis: Basis) -> array[tuple[int, int, int, int
         dtype=np.float64,
     )
 
-    pairs = list(basis.iter_shell_pairs(unique=True))
+    # Order the basis set to make equal angular momentum shells contiguous
+    basis, indices = basis.order_by_angular_momentum()
+
+    # Find pairs and expansion coefficients
+    pairs = list(basis.iter_shell_pair_groups(unique=True))
     expansions = [expansion_matrix(pair) for pair in pairs]
+
+    # Compute ERI tensor blocks
     for m, (pair_ab, expansion_ab) in enumerate(zip(pairs, expansions)):
         i, j = pair_ab.ao
         for n, (pair_cd, expansion_cd) in enumerate(zip(pairs, expansions)):
             if n < m:
                 continue
             k, l = pair_cd.ao
+            num_shells = (
+                pair_ab.shell_i.num_shells,
+                pair_ab.shell_j.num_shells,
+                pair_cd.shell_i.num_shells,
+                pair_cd.shell_j.num_shells,
+            )
             intermediates = CoulombIntermediates.from_shell_pairs(pair_ab, pair_cd)
             block = electron_repulsion_integral(
                 pair_ab,
@@ -101,6 +156,7 @@ def electron_repulsion_integrals(basis: Basis) -> array[tuple[int, int, int, int
                 expansion_ab=expansion_ab,
                 expansion_cd=expansion_cd,
                 intermediates=intermediates,
+                num_shells=num_shells,
             )
             eri[i, j, k, l] = block
             eri[i, j, l, k] = block.transpose(0, 1, 3, 2)
@@ -110,5 +166,8 @@ def electron_repulsion_integrals(basis: Basis) -> array[tuple[int, int, int, int
             eri[k, l, j, i] = block.transpose(2, 3, 1, 0)
             eri[l, k, i, j] = block.transpose(3, 2, 0, 1)
             eri[l, k, j, i] = block.transpose(3, 2, 1, 0)
+
+    # Reorder the ERI tensor to match the original basis ordering
+    eri = eri[indices][:, indices][:, :, indices][:, :, :, indices]
 
     return eri

@@ -9,9 +9,36 @@ from typing import TYPE_CHECKING, overload
 import numpy as np
 
 if TYPE_CHECKING:
-    from numpy import int64
+    from numpy import float64, int64
 
     from pymmd._typing import array
+
+
+def outer_powers(
+    base: array[tuple[int, ...], float64],
+    max_order: int,
+    multiplier: array[tuple[int, ...], float64] | None = None,
+) -> array[tuple[int, ...], float64]:
+    """Compute consecutive integer powers of each base value, optionally scaled.
+
+    Args:
+        base: Values whose powers to compute.
+        max_order: Largest nonnegative integer power.
+        multiplier: Optional factor to multiply into each power.
+
+    Returns:
+        Consecutive powers from zero through ``max_order``.
+    """
+    if max_order < 0:
+        raise ValueError("max_order must be nonnegative")
+
+    powers = np.ones((*base.shape, max_order + 1), dtype=np.float64)
+    if max_order:
+        powers[..., 1:] = base[..., None]
+    np.multiply.accumulate(powers, axis=-1, out=powers)
+    if multiplier is not None:
+        np.multiply(powers, multiplier, out=powers)
+    return powers
 
 
 @lru_cache(maxsize=None)

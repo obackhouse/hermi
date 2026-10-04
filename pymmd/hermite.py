@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from numpy import float64
 
     from pymmd._typing import array
-    from pymmd.shell import ShellPairView
+    from pymmd.basis import ShellPairView
 
 
 @lru_cache(maxsize=None)

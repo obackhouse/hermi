@@ -12,7 +12,7 @@ from pymmd.boys import boys
 from pymmd.coulomb import auxiliary_coulomb_matrix, auxiliary_coulomb_terms
 from pymmd.eri import electron_repulsion_integral, electron_repulsion_integrals
 from pymmd.hermite import expansion_coefficients, expansion_matrix
-from pymmd.shell import Basis, Shells
+from pymmd.basis import Basis, Shells
 from pymmd.util import cartesian_normalization
 
 
