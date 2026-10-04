@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pymmd"
+version = "0.1.0"
+description = "NumPy matrix McMurchie-Davidson electron-repulsion integrals"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.1.0",
+    "scipy>=1.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "mypy>=1.18.0",
+    "ruff>=0.14.0",
+    "scipy-stubs>=1.0.0",
+    "pyscf>=2.0.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+include = ["pyproject.toml", "pymmd/**/*.py"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "D", "PL"]
+ignore = [
+    "D105",
+    "D107",
+    "E741",
+    "PLC0414",
+    "PLC0415",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR0917",
+    "PLR2004",
+    "PLR5501",
+    "PLW1641",
+    "PLW2901",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["pymmd"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+implicit_reexport = true
