@@ -36,6 +36,28 @@ def make_basis(
 class ShellAndHermiteTests(unittest.TestCase):
     """Smoke tests for pair construction and Hermite calculations."""
 
+    def test_angular_momentum_order_keeps_unique_pair_blocks_ordered(self) -> None:
+        """Check unique pair blocks have a stable angular-momentum order."""
+        basis = make_basis(
+            [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+            [1, 1, 1],
+            [2, 0, 1],
+        )
+        ordered_basis, _ = basis.order_by_angular_momentum()
+        pairs = list(ordered_basis.iter_shell_pair_groups(unique=True))
+
+        pair_orders = [
+            (pair.shell_i.angular_momentum, pair.shell_j.angular_momentum)
+            for pair in pairs
+        ]
+        self.assertEqual(pair_orders, [(0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2)])
+
+        pair_momenta = [pair.angular_momentum for pair in pairs]
+        self.assertEqual(pair_momenta, sorted(pair_momenta))
+        for index, pair_ab in enumerate(pairs):
+            for pair_cd in pairs[index:]:
+                self.assertLessEqual(pair_ab.angular_momentum, pair_cd.angular_momentum)
+
     def test_shell_pair_product_data(self) -> None:
         """Check product center, exponents, and attenuation for one pair."""
         basis = make_basis([[0, 0, 0], [2, 0, 0]], [1, 2], [0, 0])

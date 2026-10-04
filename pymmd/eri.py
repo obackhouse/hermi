@@ -60,20 +60,11 @@ def electron_repulsion_integral(
     # cd kl q -> 1 cd kl q
     expansion_cd = np.expand_dims(expansion_cd, axis=0)
 
-    # ab ij [p], ab cd [p] q -> ab cd ij q
-    transformed = expansion_ab @ coulomb
+    # ab cd p [q], cd kl [q] -> ab cd p kl
+    transformed = coulomb @ expansion_cd.mT
 
-    # cd ij [q], cd kl [q] -> ab cd ij kl
-    transformed = transformed @ expansion_cd.mT
-
-    num_primitive_i = len(pair_ab.shell_i)
-    num_primitive_j = len(pair_ab.shell_j)
-    num_primitive_k = len(pair_cd.shell_i)
-    num_primitive_l = len(pair_cd.shell_j)
-    num_cartesian_i = num_cartesian_indices(pair_ab.shell_i.angular_momentum)
-    num_cartesian_j = num_cartesian_indices(pair_ab.shell_j.angular_momentum)
-    num_cartesian_k = num_cartesian_indices(pair_cd.shell_i.angular_momentum)
-    num_cartesian_l = num_cartesian_indices(pair_cd.shell_j.angular_momentum)
+    # ab ij [p], ab cd [p] kl
+    transformed = expansion_ab @ transformed
 
     # a b, c d -> (a b) (c d)
     contraction = np.multiply.outer(pair_ab.coefficient.ravel(), pair_cd.coefficient.ravel())
@@ -85,34 +76,38 @@ def electron_repulsion_integral(
 
     # ab cd ij kl -> a b c d i j k l
     transformed = transformed.reshape(
-        num_primitive_i,
-        num_primitive_j,
-        num_primitive_k,
-        num_primitive_l,
-        num_cartesian_i,
-        num_cartesian_j,
-        num_cartesian_k,
-        num_cartesian_l,
+        len(pair_ab.shell_i),
+        len(pair_ab.shell_j),
+        len(pair_cd.shell_i),
+        len(pair_cd.shell_j),
+        num_cartesian_indices(pair_ab.shell_i.angular_momentum),
+        num_cartesian_indices(pair_ab.shell_j.angular_momentum),
+        num_cartesian_indices(pair_cd.shell_i.angular_momentum),
+        num_cartesian_indices(pair_cd.shell_j.angular_momentum),
     )
 
-    # Reduce over primitive shells to get contracted shells
-    contracted = np.add.reduceat(transformed, _shell_starts(pair_ab.shell_i), axis=0)
-    contracted = np.add.reduceat(contracted, _shell_starts(pair_ab.shell_j), axis=1)
-    contracted = np.add.reduceat(contracted, _shell_starts(pair_cd.shell_i), axis=2)
-    contracted = np.add.reduceat(contracted, _shell_starts(pair_cd.shell_j), axis=3)
+    # Reduce the most compressive shell axes first to shrink later intermediates.
+    reductions = (
+        (0, pair_ab.shell_i),
+        (1, pair_ab.shell_j),
+        (2, pair_cd.shell_i),
+        (3, pair_cd.shell_j),
+    )
+    for axis, shell in sorted(reductions, key=lambda item: item[1].num_shells / len(item[1])):
+        transformed = np.add.reduceat(transformed, _shell_starts(shell), axis=axis)
 
     # a b c d i j k l -> a i b j c k d l
-    contracted = contracted.transpose(0, 4, 1, 5, 2, 6, 3, 7)
+    contracted = transformed.transpose(0, 4, 1, 5, 2, 6, 3, 7)
 
     # a i b j c k d l -> (a i) (b j) (c k) (d l)
-    unfolded = contracted.reshape(
+    contracted = contracted.reshape(
         num_shells[0] * num_cartesian_indices(pair_ab.shell_i.angular_momentum),
         num_shells[1] * num_cartesian_indices(pair_ab.shell_j.angular_momentum),
         num_shells[2] * num_cartesian_indices(pair_cd.shell_i.angular_momentum),
         num_shells[3] * num_cartesian_indices(pair_cd.shell_j.angular_momentum),
     )
 
-    return (2 * np.pi**2.5) * unfolded  # type: ignore[no-any-return]
+    return (2 * np.pi**2.5) * contracted  # type: ignore[no-any-return]
 
 
 def electron_repulsion_integrals(basis: Basis) -> array[tuple[int, int, int, int], float64]:
