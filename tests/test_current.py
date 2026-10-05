@@ -8,11 +8,11 @@ import numpy as np
 from pyscf import gto
 from scipy.special import erf
 
+from pymmd.basis import Basis, Shells
 from pymmd.boys import boys
 from pymmd.coulomb import auxiliary_coulomb_matrix, auxiliary_coulomb_terms
 from pymmd.eri import electron_repulsion_integral, electron_repulsion_integrals
 from pymmd.hermite import expansion_coefficients, expansion_matrix
-from pymmd.basis import Basis, Shells
 from pymmd.util import cartesian_normalization
 
 
@@ -43,13 +43,10 @@ class ShellAndHermiteTests(unittest.TestCase):
             [1, 1, 1],
             [2, 0, 1],
         )
-        ordered_basis, _ = basis.order_by_angular_momentum()
+        ordered_basis, _ = basis.ordered_by_angular_momentum()
         pairs = list(ordered_basis.iter_shell_pair_groups(unique=True))
 
-        pair_orders = [
-            (pair.shell_i.angular_momentum, pair.shell_j.angular_momentum)
-            for pair in pairs
-        ]
+        pair_orders = [(pair.shell_i.angular_momentum, pair.shell_j.angular_momentum) for pair in pairs]
         self.assertEqual(pair_orders, [(0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2)])
 
         pair_momenta = [pair.angular_momentum for pair in pairs]
@@ -219,6 +216,61 @@ class ShellAndHermiteTests(unittest.TestCase):
         }
         molecule = gto.M(atom=atoms, basis=pyscf_basis, unit="Bohr", cart=True, verbose=0)
         reference = molecule.intor("int2e_cart", aosym="s1")
+        self.assertEqual(eri.shape, reference.shape)
+        np.testing.assert_allclose(eri, reference, rtol=1e-10, atol=1e-12)
+
+    def test_spherical_electron_repulsion_integrals_against_pyscf(self) -> None:
+        """Compare mixed spherical shells against PySCF."""
+        basis = make_basis(
+            [[0, 0, 0], [0, 0, 0], [1.3, 0, 0]],
+            [1.1, 0.8, 0.9],
+            [0, 2, 1],
+        )
+        eri = electron_repulsion_integrals(basis, spherical=True)
+
+        pyscf_basis = {
+            "H": [[0, [1.1, 1.0]], [2, [0.8, 1.0]]],
+            "Li": [[1, [0.9, 1.0]]],
+        }
+        molecule = gto.M(
+            atom=[("H", (0, 0, 0)), ("Li", (1.3, 0, 0))],
+            basis=pyscf_basis,
+            unit="Bohr",
+            cart=False,
+            verbose=0,
+        )
+        reference = molecule.intor("int2e", aosym="s1")
+        self.assertEqual(eri.shape, (9, 9, 9, 9))
+        self.assertEqual(eri.shape, reference.shape)
+        np.testing.assert_allclose(eri, reference, rtol=1e-10, atol=1e-12)
+
+    def test_contracted_spherical_electron_repulsion_integrals_against_pyscf(self) -> None:
+        """Compare contracted spherical shells against PySCF."""
+        shells = Shells(
+            position=np.asarray(
+                [[0, 0, 0], [0, 0, 0], [1.3, 0, 0], [1.3, 0, 0]],
+                dtype=np.float64,
+            ),
+            exponent=np.asarray([0.8, 0.2, 1.1, 0.3], dtype=np.float64),
+            coefficient=np.asarray([0.35, 0.65, 0.6, 0.4], dtype=np.float64),
+            angular_momentum=np.asarray([2, 2, 0, 0], dtype=np.int64),
+            shell_indices=np.asarray([0, 0, 2, 2], dtype=np.int64),
+        )
+        eri = electron_repulsion_integrals(Basis.from_shells(shells), spherical=True)
+
+        pyscf_basis = {
+            "H": [[2, [0.8, 0.35], [0.2, 0.65]]],
+            "Li": [[0, [1.1, 0.6], [0.3, 0.4]]],
+        }
+        molecule = gto.M(
+            atom=[("H", (0, 0, 0)), ("Li", (1.3, 0, 0))],
+            basis=pyscf_basis,
+            unit="Bohr",
+            cart=False,
+            verbose=0,
+        )
+        reference = molecule.intor("int2e", aosym="s1")
+        self.assertEqual(eri.shape, (6, 6, 6, 6))
         self.assertEqual(eri.shape, reference.shape)
         np.testing.assert_allclose(eri, reference, rtol=1e-10, atol=1e-12)
 

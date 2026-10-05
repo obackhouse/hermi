@@ -8,14 +8,16 @@ from typing import TYPE_CHECKING, overload
 
 import numpy as np
 
-from pymmd.util import num_cartesian_indices
+from pymmd.screening import NoScreening
+from pymmd.util import num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
-    from typing import Iterable
+    from typing import Iterable, Literal
 
-    from numpy import float64, int64
+    from numpy import bool_, float64, int64
 
     from pymmd._typing import array
+    from pymmd.screening import Screening
 
 
 class DefaultHash:
@@ -64,7 +66,6 @@ class Shells(DefaultHash):
             raise ValueError("slice must select at least one shell")
         if np.unique(self.angular_momentum[indices]).size > 1:
             raise ValueError("slice must contain shells with one angular momentum")
-
         for shell_id in shell_ids:
             positions = np.flatnonzero(self.shell_indices == shell_id)
             if positions[0] < start or positions[-1] >= stop or positions.size != positions[-1] - positions[0] + 1:
@@ -89,7 +90,7 @@ class Shells(DefaultHash):
 
         return coefficients
 
-    def order_by_indices(self, order: array[tuple[int], int64]) -> Shells:
+    def ordered_by_indices(self, order: array[tuple[int], int64]) -> Shells:
         """Return a copy of the shell data ordered by a given index array.
 
         Args:
@@ -150,7 +151,7 @@ class ShellPairs(DefaultHash):
             angular_momentum=angular_momentum,
         )
 
-    def order_by_indices(self, order_i: array[tuple[int], int64], order_j: array[tuple[int], int64]) -> ShellPairs:
+    def ordered_by_indices(self, order_i: array[tuple[int], int64], order_j: array[tuple[int], int64]) -> ShellPairs:
         """Return a copy of the shell-pair data ordered by given index arrays.
 
         Args:
@@ -161,7 +162,7 @@ class ShellPairs(DefaultHash):
             A new ``ShellPairs`` object with all primitive-pair arrays reordered together.
         """
         return ShellPairs(
-            shells=self.shells.order_by_indices(order_i),
+            shells=self.shells.ordered_by_indices(order_i),
             position=self.position[order_i][:, order_j].copy(),
             vector=self.vector[order_i][:, order_j].copy(),
             exponent=self.exponent[order_i][:, order_j].copy(),
@@ -203,15 +204,54 @@ class Basis(DefaultHash):
         return np.unique(self.shells.shell_indices).size
 
     @cached_property
-    def num_primitive_aos(self) -> int:
-        """Number of primitive atomic orbitals."""
-        return int(np.sum(num_cartesian_indices(self.shells.angular_momentum)))
+    def num_primitive_cartesian_aos(self) -> int:
+        """Number of primitive Cartesian atomic orbitals."""
+        return int(np.sum(num_cartesian_functions(self.shells.angular_momentum)))
 
     @cached_property
-    def num_contracted_aos(self) -> int:
-        """Number of contracted atomic orbitals."""
+    def num_contracted_cartesian_aos(self) -> int:
+        """Number of contracted Cartesian atomic orbitals."""
         shell_starts = np.unique(self.shells.shell_indices, return_index=True)[1]
-        return int(np.sum(num_cartesian_indices(self.shells.angular_momentum[shell_starts])))
+        return int(np.sum(num_cartesian_functions(self.shells.angular_momentum[shell_starts])))
+
+    @cached_property
+    def num_primitive_spherical_aos(self) -> int:
+        """Number of primitive real spherical atomic orbitals."""
+        return int(np.sum(num_spherical_functions(self.shells.angular_momentum)))
+
+    @cached_property
+    def num_contracted_spherical_aos(self) -> int:
+        """Number of contracted real spherical atomic orbitals."""
+        shell_starts = np.unique(self.shells.shell_indices, return_index=True)[1]
+        return int(np.sum(num_spherical_functions(self.shells.angular_momentum[shell_starts])))
+
+    @staticmethod
+    def screen_shell_pair(
+        shell_pair: ShellPairView,
+        threshold: float = 1e-3,
+        prefactor: float = 1.0,
+    ) -> bool:
+        """Determine whether a shell pair is significant based on its coefficient and attenuation.
+
+        Args:
+            shell_pair: Shell pair to screen.
+            threshold: Minimum product of contraction coefficients and attenuation for significance.
+            prefactor: Factor to scale the threshold for significance.
+
+        Returns:
+            True if the shell pair is significant, False otherwise.
+        """
+        normalized_coefficient = shell_pair.shell_pairs.shells.normalized_coefficient
+        quantity = (
+            np.einsum(
+                "i,j,ijx->",
+                normalized_coefficient[shell_pair.indices_i],
+                normalized_coefficient[shell_pair.indices_j],
+                shell_pair.attenuation,
+            )
+            * prefactor
+        )
+        return bool(np.max(np.abs(quantity)) >= threshold)
 
     def iter_shells(self) -> Iterable[ShellView]:
         """Iterate over contracted shell views."""
@@ -219,18 +259,20 @@ class Basis(DefaultHash):
             shell_slice = slice(shell, shell + np.sum(self.shells.shell_indices == shell))
             yield ShellView(self.shells, indices=shell_slice)
 
-    def iter_shell_pairs(self, unique: bool = False) -> Iterable[ShellPairView]:
+    def iter_shell_pairs(
+        self, unique: bool = False, screening: Screening[Literal[2]] = NoScreening()
+    ) -> Iterable[ShellPairView]:
         """Iterate over contracted shell-pair views."""
-        for shell_i in np.unique(self.shells.shell_indices):
-            for shell_j in np.unique(self.shells.shell_indices):
-                if unique and shell_j < shell_i:
+        shells = list(self.iter_shells())
+        for i, shell_i in enumerate(shells):
+            for j, shell_j in enumerate(shells):
+                if unique and j < i:
                     continue
-                shell_slice_i = slice(shell_i, shell_i + np.sum(self.shells.shell_indices == shell_i))
-                shell_slice_j = slice(shell_j, shell_j + np.sum(self.shells.shell_indices == shell_j))
-                yield ShellPairView(self.shell_pairs, indices_i=shell_slice_i, indices_j=shell_slice_j)
+                shell_pair = ShellPairView(self.shell_pairs, indices_i=shell_i.indices, indices_j=shell_j.indices)
+                yield from screening(shell_pair)
 
     def iter_shell_groups(self) -> Iterable[ShellView]:
-        """Iterate over contracted contiguous shell view groups with the same angular momentum."""
+        """Iterate over contiguous shell groups with matching angular momentum."""
         shell_ids, first_indices = np.unique(self.shells.shell_indices, return_index=True)
         shell_ids = shell_ids[np.argsort(first_indices)]
         start = None
@@ -248,21 +290,29 @@ class Basis(DefaultHash):
                 start = shell_start
             stop = shell_stop
             angular_momentum = shell_angular_momentum
-
         if start is not None:
             yield ShellView(self.shells, indices=slice(start, stop))
 
-    def iter_shell_pair_groups(self, unique: bool = False) -> Iterable[ShellPairView]:
-        """Iterate over rectangular shell-pair groups with matching angular momenta on each side."""
+    def iter_shell_pair_groups(
+        self, unique: bool = False, screening: Screening[Literal[2]] = NoScreening()
+    ) -> Iterable[ShellPairView]:
+        """Iterate over shell-pair rectangles with matching angular momenta on each side.
+
+        If screened, each rectangle contains only shell pairs that pass screening.
+        """
         shell_groups = list(self.iter_shell_groups())
         for i, shell_i in enumerate(shell_groups):
             for j, shell_j in enumerate(shell_groups):
                 if unique and j < i:
                     continue
-                yield ShellPairView(self.shell_pairs, indices_i=shell_i.indices, indices_j=shell_j.indices)
+                shell_pair = ShellPairView(self.shell_pairs, indices_i=shell_i.indices, indices_j=shell_j.indices)
+                yield from screening(shell_pair)
 
-    def order_by_angular_momentum(self) -> tuple[Basis, array[tuple[int], int64]]:
+    def ordered_by_angular_momentum(self, spherical: bool = False) -> tuple[Basis, array[tuple[int], int64]]:
         """Return a copy of the basis ordered by angular momentum.
+
+        Args:
+            spherical: Build the AO permutation for real spherical functions.
 
         Returns:
             A new ``Basis`` object with contracted shells ordered by angular momentum, and AO indices
@@ -275,7 +325,7 @@ class Basis(DefaultHash):
         ordered_groups = [shell_groups[index] for index in shell_order]
         order = np.concatenate(ordered_groups)
 
-        ordered_shells = self.shells.order_by_indices(order)
+        ordered_shells = self.shells.ordered_by_indices(order)
         shell_indices = np.empty_like(ordered_shells.shell_indices)
         start = 0
         for group in ordered_groups:
@@ -290,15 +340,14 @@ class Basis(DefaultHash):
             shell_indices=shell_indices,
         )
 
-        ao_starts = np.cumsum(
-            [0, *(num_cartesian_indices(self.shells.angular_momentum[group[0]]) for group in shell_groups)]
-        )
+        num_functions = num_spherical_functions if spherical else num_cartesian_functions
+        ao_starts = np.cumsum([0, *(num_functions(self.shells.angular_momentum[group[0]]) for group in shell_groups)])
         ao_slices = {
             shell_id: np.arange(start, stop) for shell_id, start, stop in zip(shell_ids, ao_starts[:-1], ao_starts[1:])
         }
         indices = np.argsort(np.concatenate([ao_slices[shell_ids[index]] for index in shell_order]), kind="stable")
 
-        shell_pairs = self.shell_pairs.order_by_indices(order, order)
+        shell_pairs = self.shell_pairs.ordered_by_indices(order, order)
         shell_pairs = ShellPairs(
             shells=ordered_shells,
             position=shell_pairs.position,
@@ -367,12 +416,19 @@ class ShellView:
         return int(self.shells.angular_momentum[self.indices][0])
 
     @cached_property
-    def ao(self) -> slice:
-        """Slice of contracted atomic orbitals for the selected shell."""
-        # TODO: Easy hidden bottleneck
+    def cartesian_ao_slice(self) -> slice:
+        """Slice of contracted Cartesian atomic orbitals for the selected shell."""
         _, first_indices = np.unique(self.shells.shell_indices[: self.indices.start or 0], return_index=True)
-        start = int(np.sum(num_cartesian_indices(self.shells.angular_momentum[first_indices])))
-        stop = start + num_cartesian_indices(self.angular_momentum) * self.num_shells
+        start = int(np.sum(num_cartesian_functions(self.shells.angular_momentum[first_indices])))
+        stop = start + num_cartesian_functions(self.angular_momentum) * self.num_shells
+        return slice(start, stop)
+
+    @cached_property
+    def spherical_ao_slice(self) -> slice:
+        """Slice of contracted real spherical atomic orbitals for the selected shell."""
+        _, first_indices = np.unique(self.shells.shell_indices[: self.indices.start or 0], return_index=True)
+        start = int(np.sum(num_spherical_functions(self.shells.angular_momentum[first_indices])))
+        stop = start + num_spherical_functions(self.angular_momentum) * self.num_shells
         return slice(start, stop)
 
     @cached_property
@@ -384,6 +440,49 @@ class ShellView:
         start = self.indices.start or 0
         stop = self.indices.stop or self.shells.position.shape[0]
         return int(stop - start)
+
+    def iter_masked_views(self, mask: array[tuple[int], bool_]) -> Iterable[ShellView]:
+        """Yield contiguous shell views selected by a one-dimensional mask."""
+        if mask.shape != (self.num_shells,):
+            raise ValueError(f"mask must have shape ({self.num_shells},)")
+
+        shell_slices = _shell_slices(self)
+        for start, stop in _true_runs(mask):
+            yield ShellView(
+                self.shells,
+                indices=slice(shell_slices[start].start, shell_slices[stop - 1].stop),
+            )
+
+
+def _shell_slices(view: ShellView) -> list[slice]:
+    """Return primitive slices for each contracted shell in a view."""
+    start = view.indices.start or 0
+    stop = view.indices.stop if view.indices.stop is not None else view.shells.shell_indices.size
+    _, offsets = np.unique(view.shells.shell_indices[view.indices], return_index=True)
+    boundaries = [start + int(offset) for offset in np.sort(offsets)]
+    boundaries.append(stop)
+    return [slice(first, last) for first, last in zip(boundaries[:-1], boundaries[1:])]
+
+
+def _individual_shell_views(view: ShellView) -> Iterable[ShellView]:
+    """Yield one view for each contracted shell in a group."""
+    for shell_slice in _shell_slices(view):
+        yield ShellView(view.shells, indices=shell_slice)
+
+
+def _true_runs(mask: array[tuple[int], bool_]) -> list[tuple[int, int]]:
+    """Return half-open intervals of consecutive true values."""
+    runs = []
+    start = None
+    for index, selected in enumerate(mask):
+        if selected and start is None:
+            start = index
+        elif not selected and start is not None:
+            runs.append((start, index))
+            start = None
+    if start is not None:
+        runs.append((start, len(mask)))
+    return runs
 
 
 @dataclass(frozen=True)
@@ -444,9 +543,14 @@ class ShellPairView:
         return int(self.shell_pairs.angular_momentum[self.indices_i, self.indices_j][0, 0])
 
     @property
-    def ao(self) -> tuple[slice, slice]:
-        """Slices of contracted atomic orbitals for the selected shell pair."""
-        return self.shell_i.ao, self.shell_j.ao
+    def cartesian_ao_slices(self) -> tuple[slice, slice]:
+        """Slices of contracted Cartesian atomic orbitals for the selected shell pair."""
+        return self.shell_i.cartesian_ao_slice, self.shell_j.cartesian_ao_slice
+
+    @property
+    def spherical_ao_slices(self) -> tuple[slice, slice]:
+        """Slices of contracted real spherical atomic orbitals for the selected shell pair."""
+        return self.shell_i.spherical_ao_slice, self.shell_j.spherical_ao_slice
 
     def __len__(self) -> int:
         start_i = self.indices_i.start or 0
@@ -454,3 +558,32 @@ class ShellPairView:
         start_j = self.indices_j.start or 0
         stop_j = self.indices_j.stop or self.shell_pairs.position.shape[1]
         return int((stop_i - start_i) * (stop_j - start_j))
+
+    def iter_masked_views(self, mask: array[tuple[int, int], bool_]) -> Iterable[ShellPairView]:
+        """Yield rectangular shell-pair views containing only true mask entries."""
+        shape = (self.shell_i.num_shells, self.shell_j.num_shells)
+        if mask.shape != shape:
+            raise ValueError(f"mask must have shape {shape}")
+
+        shells_i = _shell_slices(self.shell_i)
+        shells_j = _shell_slices(self.shell_j)
+        active: dict[tuple[int, int], int] = {}
+
+        def append_rectangle(row_start: int, row_stop: int, interval: tuple[int, int]) -> ShellPairView:
+            column_start, column_stop = interval
+            return ShellPairView(
+                self.shell_pairs,
+                indices_i=slice(shells_i[row_start].start, shells_i[row_stop - 1].stop),
+                indices_j=slice(shells_j[column_start].start, shells_j[column_stop - 1].stop),
+            )
+
+        for row, row_mask in enumerate(mask):
+            intervals = _true_runs(row_mask)
+            current = set(intervals)
+            for interval in sorted(active.keys() - current):
+                yield append_rectangle(active.pop(interval), row, interval)
+            for interval in intervals:
+                active.setdefault(interval, row)
+
+        for interval, row_start in sorted(active.items()):
+            yield append_rectangle(row_start, shape[0], interval)

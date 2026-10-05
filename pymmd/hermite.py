@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from pymmd.util import cartesian_indices, cartesian_normalization
+from pymmd.util import cartesian_indices, cartesian_normalization, cartesian_to_spherical
 
 if TYPE_CHECKING:
     from numpy import float64
@@ -96,11 +96,12 @@ def expansion_coefficients(pair: ShellPairView, axis: int) -> array[tuple[int, i
     return coefficients
 
 
-def expansion_matrix(pair: ShellPairView) -> array[tuple[int, int, int], float64]:
-    r"""Assemble the Cartesian-pair to Hermite expansion matrix.
+def expansion_matrix(pair: ShellPairView, spherical: bool = False) -> array[tuple[int, int, int], float64]:
+    r"""Assemble the shell-pair to Hermite expansion matrix.
 
     Args:
         pair: Primitive shell-pair data.
+        spherical: Return real spherical functions instead of Cartesian functions.
 
     Returns:
         Expansion matrix.
@@ -109,23 +110,37 @@ def expansion_matrix(pair: ShellPairView) -> array[tuple[int, int, int], float64
     cartesian_j = cartesian_indices(pair.shell_j.angular_momentum)
     indices = np.asarray(hermite_indices(pair.angular_momentum), dtype=np.int64)
 
-    coefficients = np.ones(
-        (len(pair.shell_i), len(pair.shell_j), len(cartesian_i), len(cartesian_j), len(indices)),
-        dtype=np.float64,
-    )
-
+    # Compute the expansion coefficients along each Cartesian axis
+    coefficients = np.ones((len(pair), len(indices), len(cartesian_i) * len(cartesian_j)), dtype=np.float64)
     for axis in range(3):
         table = expansion_coefficients(pair, axis)
         table = np.take(table, indices[:, axis], axis=2)
         table = np.take(table, cartesian_i[:, axis], axis=3)
         table = np.take(table, cartesian_j[:, axis], axis=4)
-        coefficients *= table.transpose(0, 1, 3, 4, 2)
+        coefficients *= table.reshape(coefficients.shape)
 
+    # i, j -> (i j)
     normalization = np.multiply.outer(
         cartesian_normalization(pair.shell_i.angular_momentum),
         cartesian_normalization(pair.shell_j.angular_momentum),
-    )
+    ).ravel()
 
-    coefficients *= np.expand_dims(normalization, axis=(0, 1, -1))
+    # (a b) t (i j), (i j) -> (a b) t (i j)
+    coefficients *= normalization
 
-    return coefficients.reshape(len(pair), len(cartesian_i) * len(cartesian_j), len(indices))
+    if spherical:
+        # i p, j q -> (i j) (p q)
+        transform = np.multiply.outer(
+            cartesian_to_spherical(pair.shell_i.angular_momentum),
+            cartesian_to_spherical(pair.shell_j.angular_momentum),
+        )
+        transform = transform.transpose(0, 2, 1, 3)
+        transform = transform.reshape(len(cartesian_i) * len(cartesian_j), -1)
+
+        # (a b) t (i j), (i j) (p q) -> (a b) t (p q)
+        coefficients = coefficients @ transform
+
+    # (a b) t (i j) -> (a b) (i j) t
+    coefficients = coefficients.mT
+
+    return coefficients
