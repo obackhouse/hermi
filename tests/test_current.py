@@ -10,8 +10,8 @@ from scipy.special import erf
 
 from pymmd.basis import Basis, Shells
 from pymmd.boys import boys
-from pymmd.coulomb import auxiliary_coulomb_matrix, auxiliary_coulomb_terms
-from pymmd.eri import electron_repulsion_integral, electron_repulsion_integrals
+from pymmd.coulomb import auxiliary_coulomb_matrix
+from pymmd.eri import electron_repulsion_integrals
 from pymmd.hermite import expansion_coefficients, expansion_matrix
 from pymmd.util import cartesian_normalization
 
@@ -30,7 +30,7 @@ def make_basis(
         angular_momentum=np.asarray(angular_momenta, dtype=np.int64),
         shell_indices=np.arange(count, dtype=np.int64),
     )
-    return Basis.from_shells(shells)
+    return Basis.from_shells(shells).normalize()
 
 
 class ShellAndHermiteTests(unittest.TestCase):
@@ -105,7 +105,7 @@ class ShellAndHermiteTests(unittest.TestCase):
             angular_momentum=np.asarray([0, 0]),
             shell_indices=np.asarray([0, 0]),
         )
-        shell = Basis.from_shells(shells)[0:2]
+        shell = Basis.from_shells(shells).normalize()[0:2]
 
         radial_factors = (2 * exponents / np.pi) ** 0.75
         normalized_primitive_coefficients = shell.coefficient / radial_factors
@@ -124,8 +124,8 @@ class ShellAndHermiteTests(unittest.TestCase):
         np.testing.assert_allclose(values[1, 0], expected_f0)
         np.testing.assert_allclose(values[1, 1], (expected_f0 - np.exp(-2)) / 4)
 
-    def test_ssss_auxiliary_term_shape_and_value(self) -> None:
-        """Check one ssss quartet against its sole Hermite auxiliary term."""
+    def test_ssss_auxiliary_coulomb_matrix_shape_and_value(self) -> None:
+        """Check the ssss Hermite Coulomb matrix against the Boys value."""
         basis = make_basis(
             [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
             [1, 1, 1, 1],
@@ -134,22 +134,14 @@ class ShellAndHermiteTests(unittest.TestCase):
         pair_ab = basis[0:1, 1:2]
         pair_cd = basis[2:3, 3:4]
 
-        terms = auxiliary_coulomb_terms(pair_ab, pair_cd)
-        matrix = auxiliary_coulomb_matrix(pair_ab, pair_cd)
-        eri = electron_repulsion_integral(pair_ab, pair_cd)
+        matrix, signs = auxiliary_coulomb_matrix(pair_ab, pair_cd)
 
         rho = pair_ab.exponent[0, 0] * pair_cd.exponent[0, 0] / (pair_ab.exponent[0, 0] + pair_cd.exponent[0, 0])
         argument = rho * np.sum((pair_ab.position[0, 0] - pair_cd.position[0, 0]) ** 2)
         expected = boys(np.asarray(argument), max_order=0)[0]
-        self.assertEqual(terms.shape, (1, 1, 1, 1))
         self.assertEqual(matrix.shape, (1, 1, 1, 1))
-        self.assertEqual(eri.shape, (1, 1, 1, 1))
-        np.testing.assert_allclose(terms[0, 0, 0, 0], expected)
         np.testing.assert_allclose(matrix[0, 0, 0, 0], expected)
-        prefactor = 2 * np.pi**2.5 / (2 * 2 * np.sqrt(2 + 2))
-        attenuation = np.prod(pair_ab.attenuation[0, 0]) * np.prod(pair_cd.attenuation[0, 0])
-        radial_normalization = (2 / np.pi) ** 0.75
-        np.testing.assert_allclose(eri[0, 0, 0, 0], prefactor * attenuation * expected * radial_normalization**4)
+        np.testing.assert_array_equal(signs, [1.0])
 
     def test_coulomb_matrix_pair_indices_and_ket_sign(self) -> None:
         """Check a first-order Hermite element and the ket sign convention."""
@@ -160,13 +152,15 @@ class ShellAndHermiteTests(unittest.TestCase):
         )
         pair_ab = basis[0:1, 1:2]
         pair_cd = basis[2:3, 3:4]
-        matrix = auxiliary_coulomb_matrix(pair_ab, pair_cd)
+        matrix, signs = auxiliary_coulomb_matrix(pair_ab, pair_cd)
 
         argument = 0.75
         first_order = boys(np.asarray(argument), max_order=1)[1]
         self.assertEqual(matrix.shape, (1, 1, 4, 4))
-        np.testing.assert_allclose(matrix[0, 0, 3, 0], -first_order)
-        np.testing.assert_allclose(matrix[0, 0, 0, 3], first_order)
+        np.testing.assert_array_equal(signs, [1.0, -1.0, -1.0, -1.0])
+        signed_matrix = matrix * signs[None, None, None, :]
+        np.testing.assert_allclose(signed_matrix[0, 0, 3, 0], -first_order)
+        np.testing.assert_allclose(signed_matrix[0, 0, 0, 3], first_order)
 
     def test_electron_repulsion_integrals_against_pyscf(self) -> None:
         """Compare the full Cartesian ERI tensor against PySCF."""
@@ -206,7 +200,7 @@ class ShellAndHermiteTests(unittest.TestCase):
             angular_momentum=np.asarray([1, 1, 0, 0], dtype=np.int64),
             shell_indices=np.asarray([0, 0, 2, 2], dtype=np.int64),
         )
-        basis = Basis.from_shells(shells)
+        basis = Basis.from_shells(shells).normalize()
         eri = electron_repulsion_integrals(basis)
 
         atoms = [("H", (0, 0, 0)), ("Li", (1.3, 0, 0))]
@@ -256,7 +250,7 @@ class ShellAndHermiteTests(unittest.TestCase):
             angular_momentum=np.asarray([2, 2, 0, 0], dtype=np.int64),
             shell_indices=np.asarray([0, 0, 2, 2], dtype=np.int64),
         )
-        eri = electron_repulsion_integrals(Basis.from_shells(shells), spherical=True)
+        eri = electron_repulsion_integrals(Basis.from_shells(shells).normalize(), spherical=True)
 
         pyscf_basis = {
             "H": [[2, [0.8, 0.35], [0.2, 0.65]]],

@@ -43,7 +43,7 @@ def expansion_coefficients(pair: ShellPairView, axis: int) -> array[tuple[int, i
     orders = np.arange(1, max_order)
 
     # a b -> a b
-    half_reciprocal_exponent = 0.5 / pair.exponent
+    half_reciprocal_exponent = np.expand_dims(0.5 / pair.exponent, axis=-1)
 
     # a b, a -> a b
     offset_a = pair.position[..., axis] - pair.shell_i.position[..., axis][:, None]
@@ -65,7 +65,7 @@ def expansion_coefficients(pair: ShellPairView, axis: int) -> array[tuple[int, i
         """
         # a b t, a b -> a b t
         target[...] = source * np.expand_dims(offset, axis=-1)
-        target[..., 1:] += source[..., :-1] * np.expand_dims(half_reciprocal_exponent, axis=-1)
+        target[..., 1:] += source[..., :-1] * half_reciprocal_exponent
         target[..., :-1] += orders * source[..., 1:]
 
     coefficients = np.zeros(

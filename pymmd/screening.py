@@ -88,14 +88,14 @@ class AttenuationScreening(Screening[Literal[2]]):
 
     def __call__(self, views: ShellPairView) -> Iterable[ShellPairView]:
         """Yield shell-pair views that pass the attenuation threshold."""
-        coefficient = self.basis.shells.normalized_coefficient
+        coefficient = self.basis.shells.coefficient
         quantity = np.max(views.attenuation, axis=-1)
         quantity *= np.abs(np.multiply.outer(coefficient[views.indices_i], coefficient[views.indices_j]))
 
-        _, starts_i = np.unique(self.basis.shells.shell_indices[views.indices_i], return_index=True)
-        _, starts_j = np.unique(self.basis.shells.shell_indices[views.indices_j], return_index=True)
-        quantity = np.maximum.reduceat(quantity, np.sort(starts_i), axis=0)
-        quantity = np.maximum.reduceat(quantity, np.sort(starts_j), axis=1)
+        starts_i = self.basis.contracted_shell_starts(views.indices_i)
+        starts_j = self.basis.contracted_shell_starts(views.indices_j)
+        quantity = np.maximum.reduceat(quantity, starts_i, axis=0)
+        quantity = np.maximum.reduceat(quantity, starts_j, axis=1)
 
         mask = quantity > (self.threshold / self.prefactor)
         yield from views.iter_masked_views(mask)
