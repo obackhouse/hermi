@@ -8,16 +8,16 @@ from typing import TYPE_CHECKING, overload
 
 import numpy as np
 
-from pymmd.hermite import hermite_indices
-from pymmd.util import add_reduceat, num_cartesian_functions, num_spherical_functions
+from hermi.hermite import hermite_indices
+from hermi.util import add_reduceat, num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
     from typing import Literal
 
     from numpy import float64, int64
 
-    from pymmd._typing import array
-    from pymmd.basis import ShellPairView, ShellView
+    from hermi._typing import array
+    from hermi.basis import ShellPairView, ShellView
 
 
 @overload

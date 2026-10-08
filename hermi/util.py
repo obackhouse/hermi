@@ -13,7 +13,7 @@ from scipy.special import lpmv
 if TYPE_CHECKING:
     from numpy import float64, int64
 
-    from pymmd._typing import array
+    from hermi._typing import array
 
 
 @njit(parallel=True, cache=True)

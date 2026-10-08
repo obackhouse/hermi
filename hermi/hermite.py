@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from pymmd.util import cartesian_indices, cartesian_normalization, cartesian_to_spherical
+from hermi.util import cartesian_indices, cartesian_normalization, cartesian_to_spherical
 
 if TYPE_CHECKING:
     from numpy import float64
 
-    from pymmd._typing import array
-    from pymmd.basis import ShellPairView, ShellView
+    from hermi._typing import array
+    from hermi.basis import ShellPairView, ShellView
 
 
 @lru_cache(maxsize=None)

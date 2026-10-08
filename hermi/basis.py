@@ -7,17 +7,17 @@ from typing import TYPE_CHECKING, overload
 
 import numpy as np
 
-from pymmd.screening import NoScreening
-from pymmd.symmetry import SymmetryN2S1, SymmetryN2S2
-from pymmd.util import num_cartesian_functions, num_spherical_functions
+from hermi.screening import NoScreening
+from hermi.symmetry import SymmetryN2S1, SymmetryN2S2
+from hermi.util import num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
     from typing import Iterable, Literal
 
     from numpy import bool_, float64, int64
 
-    from pymmd._typing import array
-    from pymmd.screening import Screening
+    from hermi._typing import array
+    from hermi.screening import Screening
 
 
 class DefaultHash:

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     from numpy import number
 
-    from pymmd._typing import array
+    from hermi._typing import array
 
 
 def _ravel_symmetric_indices(i: int, j: int) -> int:

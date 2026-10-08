@@ -8,13 +8,13 @@ import numpy as np
 from pyscf import gto
 from scipy.special import erf
 
-from pymmd.basis import Basis, Shells
-from pymmd.boys import boys
-from pymmd.coulomb import coulomb_integrals_22, coulomb_operator_hermite_22
-from pymmd.hermite import expansion_pair_coefficients, expansion_pair_matrix
-from pymmd.kinetic import kinetic_integrals_22
-from pymmd.overlap import overlap_integrals_22
-from pymmd.util import cartesian_normalization
+from hermi.basis import Basis, Shells
+from hermi.boys import boys
+from hermi.coulomb import coulomb_integrals_22, coulomb_operator_hermite_22
+from hermi.hermite import expansion_pair_coefficients, expansion_pair_matrix
+from hermi.kinetic import kinetic_integrals_22
+from hermi.overlap import overlap_integrals_22
+from hermi.util import cartesian_normalization
 
 
 def make_basis(

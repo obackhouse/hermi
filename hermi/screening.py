@@ -13,10 +13,10 @@ if TYPE_CHECKING:
 
     from numpy import float64
 
-    from pymmd._typing import array
-    from pymmd.basis import Basis, ShellPairView, ShellView
+    from hermi._typing import array
+    from hermi.basis import Basis, ShellPairView, ShellView
 
-from pymmd.util import num_cartesian_functions, num_spherical_functions
+from hermi.util import num_cartesian_functions, num_spherical_functions
 
 
 class Screening[N: Literal[1, 2, 3, 4]](ABC):

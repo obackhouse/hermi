@@ -6,17 +6,17 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from pymmd.hermite import expansion_matrix, hermite_indices
-from pymmd.integral import _reduce_primitive, _unpack_from_shell_pair_major, hermite_operator_matrix_indices
-from pymmd.symmetry import SymmetryN2S2
+from hermi.hermite import expansion_matrix, hermite_indices
+from hermi.integral import _reduce_primitive, _unpack_from_shell_pair_major, hermite_operator_matrix_indices
+from hermi.symmetry import SymmetryN2S2
 
 if TYPE_CHECKING:
     from typing import Literal
 
     from numpy import float64
 
-    from pymmd._typing import array
-    from pymmd.basis import Basis, ShellPairView
+    from hermi._typing import array
+    from hermi.basis import Basis, ShellPairView
 
 
 def kinetic_operator_hermite_11(

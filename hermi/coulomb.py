@@ -7,20 +7,20 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from pymmd.boys import boys
-from pymmd.hermite import expansion_pair_matrix, hermite_indices
-from pymmd.integral import _reduce_primitive_pair, _unpack_from_shell_pair_major, hermite_operator_matrix_indices
-from pymmd.screening import AttenuationScreening
-from pymmd.symmetry import SymmetryN4S8
-from pymmd.util import outer_powers
+from hermi.boys import boys
+from hermi.hermite import expansion_pair_matrix, hermite_indices
+from hermi.integral import _reduce_primitive_pair, _unpack_from_shell_pair_major, hermite_operator_matrix_indices
+from hermi.screening import AttenuationScreening
+from hermi.symmetry import SymmetryN4S8
+from hermi.util import outer_powers
 
 if TYPE_CHECKING:
     from typing import Literal
 
     from numpy import float64
 
-    from pymmd._typing import array
-    from pymmd.basis import Basis, ShellPairView
+    from hermi._typing import array
+    from hermi.basis import Basis, ShellPairView
 
 
 @dataclass

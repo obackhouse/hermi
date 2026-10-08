@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.special import erf
 
-from pymmd._boys_table import (
+from hermi._boys_table import (
     BOYS_INTERPOLATION_ORDER,
     BOYS_INVERSE_FACTORIALS,
     BOYS_INVERSE_ODD,
@@ -20,7 +20,7 @@ from pymmd._boys_table import (
 if TYPE_CHECKING:
     from numpy import float64
 
-    from pymmd._typing import array
+    from hermi._typing import array
 
 
 def boys(argument: array[tuple[int, ...], float64], max_order: int) -> array[tuple[int, ...], float64]:

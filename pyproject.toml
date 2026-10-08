@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pymmd"
+name = "hermi"
 version = "0.1.0"
 description = "NumPy matrix McMurchie-Davidson electron-repulsion integrals"
 requires-python = ">=3.12"
@@ -25,7 +25,7 @@ dev = [
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-include = ["pyproject.toml", "pymmd/**/*.py"]
+include = ["pyproject.toml", "hermi/**/*.py"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -55,7 +55,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["pymmd"]
+known-first-party = ["hermi"]
 
 [tool.mypy]
 python_version = "3.12"
