@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, overload
 import numpy as np
 
 from pymmd.screening import NoScreening
+from pymmd.symmetry import SymmetryN2S2
 from pymmd.util import num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
@@ -281,13 +282,11 @@ class Basis(DefaultHash):
     ) -> Iterable[ShellPairView]:
         """Iterate over contracted shell-pair views."""
         shells = list(self.iter_shells())
-        for i, shell_i in enumerate(shells):
-            for j, shell_j in enumerate(shells):
-                if unique and j < i:
-                    continue
-                shell_pair = self[shell_i, shell_j]
-                assert isinstance(shell_pair, ShellPairView)
-                yield from screening(shell_pair)
+        symmetry = SymmetryN2S2((len(shells), len(shells)))
+        for (i, j), _ in symmetry.canonical_indices():
+            shell_pair = self[shells[i], shells[j]]
+            assert isinstance(shell_pair, ShellPairView)
+            yield from screening(shell_pair)
 
     def iter_shell_groups(self) -> Iterable[ShellView]:
         """Iterate over contiguous shell groups with matching angular momentum."""
@@ -318,13 +317,11 @@ class Basis(DefaultHash):
         If screened, each rectangle contains only shell pairs that pass screening.
         """
         shell_groups = list(self.iter_shell_groups())
-        for i, shell_i in enumerate(shell_groups):
-            for j, shell_j in enumerate(shell_groups):
-                if unique and j < i:
-                    continue
-                shell_pair = self[shell_i, shell_j]
-                assert isinstance(shell_pair, ShellPairView)
-                yield from screening(shell_pair)
+        symmetry = SymmetryN2S2((len(shell_groups), len(shell_groups)))
+        for (i, j), _ in symmetry.canonical_indices():
+            shell_pair = self[shell_groups[i], shell_groups[j]]
+            assert isinstance(shell_pair, ShellPairView)
+            yield from screening(shell_pair)
 
     def ordered_by_angular_momentum(self, spherical: bool = False) -> tuple[Basis, array[tuple[int], int64]]:
         """Return a copy of the basis ordered by angular momentum.

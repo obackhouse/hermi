@@ -10,6 +10,7 @@ import numpy as np
 from pymmd.coulomb import CoulombIntermediates, auxiliary_coulomb_matrix
 from pymmd.hermite import expansion_matrix
 from pymmd.screening import AttenuationScreening
+from pymmd.symmetry import SymmetryN4S8
 from pymmd.util import add_reduceat, num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
@@ -60,7 +61,7 @@ def electron_repulsion_integral(
     intermediates: CoulombIntermediates | None = None,
     *,
     spherical: bool = False,
-) -> array[tuple[int, int], float64]:
+) -> array[tuple[int, int, int, int], float64]:
     r"""Compute a contracted electron-repulsion integral block.
 
     Args:
@@ -141,6 +142,9 @@ def electron_repulsion_integrals(
     # Order the basis set to make equal angular momentum shells contiguous
     basis, indices = basis.ordered_by_angular_momentum(spherical=spherical)
 
+    # Get the symmetry helper
+    symmetry = SymmetryN4S8(eri.shape)
+
     # Find pairs and expansion coefficients
     pairs = list(basis.iter_shell_pair_groups(unique=True, screening=AttenuationScreening(basis)))
     expansions = {pair: expansion_matrix(pair, spherical=spherical) for pair in pairs}
@@ -161,14 +165,7 @@ def electron_repulsion_integrals(
                 intermediates=intermediates,
                 spherical=spherical,
             )
-            eri[i, j, k, l] = block
-            eri[i, j, l, k] = block.transpose(0, 1, 3, 2)
-            eri[j, i, k, l] = block.transpose(1, 0, 2, 3)
-            eri[j, i, l, k] = block.transpose(1, 0, 3, 2)
-            eri[k, l, i, j] = block.transpose(2, 3, 0, 1)
-            eri[k, l, j, i] = block.transpose(2, 3, 1, 0)
-            eri[l, k, i, j] = block.transpose(3, 2, 0, 1)
-            eri[l, k, j, i] = block.transpose(3, 2, 1, 0)
+            symmetry.set_value(eri, (i, j, k, l), block)
 
     # Reorder the ERI tensor to match the original basis ordering
     eri = eri[indices][:, indices][:, :, indices][:, :, :, indices]
