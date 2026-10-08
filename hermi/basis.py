@@ -5,11 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, overload
 
+import basis_set_exchange as bse
 import numpy as np
 
 from hermi.screening import NoScreening
 from hermi.symmetry import SymmetryN2S1, SymmetryN2S2
-from hermi.util import num_cartesian_functions, num_spherical_functions
+from hermi.util import DefaultHash, num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
     from typing import Iterable, Literal
@@ -17,21 +18,8 @@ if TYPE_CHECKING:
     from numpy import bool_, float64, int64
 
     from hermi._typing import array
+    from hermi.molecule import Molecule
     from hermi.screening import Screening
-
-
-class DefaultHash:
-    """Base class for objects with the default ``object.__hash__`` and ``object.__eq__``."""
-
-    __slots__ = ()
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, DefaultHash):
-            return NotImplemented
-        return object.__eq__(self, other)
-
-    def __hash__(self) -> int:
-        return object.__hash__(self)
 
 
 @dataclass(frozen=True, eq=False, slots=True)
@@ -143,6 +131,71 @@ class Basis(DefaultHash):
         """
         shell_pairs = ShellPairs.from_shells(shells)
         return cls(shells=shells, shell_pairs=shell_pairs)
+
+    @classmethod
+    def from_molecule(cls, molecule: Molecule, basis_set: str) -> Basis:
+        """Construct a basis from a molecule and a basis set name.
+
+        Args:
+            molecule: Molecule to build the basis for.
+            basis_set: Name of the basis set to use.
+
+        Returns:
+            A ``Basis`` with shells and shell pairs derived from the molecule and basis set.
+        """
+        if not molecule.elements:
+            shells = Shells(
+                position=np.empty((0, 3), dtype=np.float64),
+                exponent=np.empty(0, dtype=np.float64),
+                coefficient=np.empty(0, dtype=np.float64),
+                angular_momentum=np.empty(0, dtype=np.int64),
+                shell_indices=np.empty(0, dtype=np.int64),
+            )
+            return cls.from_shells(shells)
+
+        atomic_charges = list(dict.fromkeys(element.atomic_charge for element in molecule.elements))
+        basis_data = bse.get_basis(basis_set, elements=atomic_charges)
+
+        positions: list[array[tuple[int], float64]] = []
+        exponents: list[float] = []
+        coefficients: list[float] = []
+        angular_momenta: list[int] = []
+        shell_indices: list[int] = []
+
+        for element, position in zip(molecule.elements, molecule.positions, strict=True):
+            element_data = basis_data["elements"].get(str(element.atomic_charge))
+            if element_data is None:
+                raise ValueError(f"basis set {basis_set!r} has no data for {element.symbol}")
+
+            for electron_shell in element_data["electron_shells"]:
+                shell_exponents = np.asarray(electron_shell["exponents"], dtype=np.float64)
+                angular_momentum = electron_shell["angular_momentum"]
+                shell_coefficients = electron_shell["coefficients"]
+
+                for momentum, contraction_coefficients in zip(angular_momentum, shell_coefficients, strict=True):
+                    contraction_coefficients = np.asarray(contraction_coefficients, dtype=np.float64)
+                    if contraction_coefficients.ndim == 1:
+                        contraction_coefficients = contraction_coefficients[None, :]
+                    if contraction_coefficients.shape[1] != shell_exponents.size:
+                        raise ValueError("basis-set coefficient count does not match exponent count")
+
+                    for contraction in contraction_coefficients:
+                        start = len(exponents)
+                        nprim = shell_exponents.size
+                        positions.extend(np.tile(position, (nprim, 1)))
+                        exponents.extend(shell_exponents)
+                        coefficients.extend(contraction)
+                        angular_momenta.extend([momentum] * nprim)
+                        shell_indices.extend([start] * nprim)
+
+        shells = Shells(
+            position=np.asarray(positions, dtype=np.float64).reshape((-1, 3)),
+            exponent=np.asarray(exponents, dtype=np.float64),
+            coefficient=np.asarray(coefficients, dtype=np.float64),
+            angular_momentum=np.asarray(angular_momenta, dtype=np.int64),
+            shell_indices=np.asarray(shell_indices, dtype=np.int64),
+        )
+        return cls.from_shells(shells).normalize()
 
     def normalize(self) -> Basis:
         """Return a basis with radial normalization applied to each contraction.

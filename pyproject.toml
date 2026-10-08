@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=2.1.0",
     "scipy>=1.12.0",
     "numba>=0.57.0",
+    "basis-set-exchange>=0.4.0",
 ]
 
 [project.optional-dependencies]
@@ -21,6 +22,9 @@ dev = [
     "scipy-stubs>=1.0.0",
     "pyscf>=2.0.0",
 ]
+
+[tool.setuptools.package-data]
+hermi = ["periodic_table.json"]
 
 [tool.ruff]
 line-length = 120
@@ -61,3 +65,7 @@ known-first-party = ["hermi"]
 python_version = "3.12"
 strict = true
 implicit_reexport = true
+
+[[tool.mypy.overrides]]
+module = ["basis_set_exchange.*"]
+ignore_missing_imports = true

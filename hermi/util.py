@@ -16,6 +16,20 @@ if TYPE_CHECKING:
     from hermi._typing import array
 
 
+class DefaultHash:
+    """Base class for objects with the default ``object.__hash__`` and ``object.__eq__``."""
+
+    __slots__ = ()
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DefaultHash):
+            return NotImplemented
+        return object.__eq__(self, other)
+
+    def __hash__(self) -> int:
+        return object.__hash__(self)
+
+
 @njit(parallel=True, cache=True)
 def _add_reduceat_3d(
     values: array[tuple[int, int, int], float64],

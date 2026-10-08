@@ -13,6 +13,7 @@ from hermi.boys import boys
 from hermi.coulomb import coulomb_integrals_22, coulomb_operator_hermite_22
 from hermi.hermite import expansion_pair_coefficients, expansion_pair_matrix
 from hermi.kinetic import kinetic_integrals_22
+from hermi.molecule import Element, Molecule
 from hermi.overlap import overlap_integrals_22
 from hermi.util import cartesian_normalization
 
@@ -32,6 +33,70 @@ def make_basis(
         shell_indices=np.arange(count, dtype=np.int64),
     )
     return Basis.from_shells(shells).normalize()
+
+
+class BasisConstructionTests(unittest.TestCase):
+    """Check basis construction from BSE molecular data."""
+
+    def test_from_molecule_repeats_basis_data_for_each_atom(self) -> None:
+        """Build a normalized hydrogen basis at both molecular centers."""
+        molecule = Molecule(
+            elements=[Element("H", 1, "Hydrogen", [1]), Element("H", 1, "Hydrogen", [1])],
+            positions=np.asarray([[0, 0, 0], [0, 0, 1.4]], dtype=np.float64),
+        )
+        basis = Basis.from_molecule(molecule, "sto-3g")
+
+        self.assertEqual(basis.num_primitive_shells, 6)
+        self.assertEqual(basis.num_contracted_shells, 2)
+        np.testing.assert_array_equal(basis.shells.shell_indices, [0, 0, 0, 3, 3, 3])
+        np.testing.assert_array_equal(
+            basis.shells.position,
+            np.repeat(molecule.positions, 3, axis=0),
+        )
+
+        reference_molecule = gto.M(
+            atom="H 0 0 0; H 0 0 1.4",
+            basis="sto-3g",
+            unit="Bohr",
+            cart=True,
+            verbose=0,
+        )
+        np.testing.assert_allclose(
+            overlap_integrals_22(basis),
+            reference_molecule.intor("int1e_ovlp_cart"),
+            rtol=1e-7,
+            atol=1e-10,
+        )
+
+    def test_from_molecule_handles_combined_angular_momenta(self) -> None:
+        """Expand a BSE s/p shell into separate contracted shells."""
+        molecule = Molecule(
+            elements=[Element("C", 6, "Carbon", [2, 4])],
+            positions=np.zeros((1, 3), dtype=np.float64),
+        )
+        basis = Basis.from_molecule(molecule, "sto-3g")
+
+        self.assertEqual(basis.num_primitive_shells, 9)
+        self.assertEqual(basis.num_contracted_shells, 3)
+        self.assertEqual(basis.num_contracted_cartesian_aos, 5)
+        np.testing.assert_array_equal(
+            basis.shells.angular_momentum[basis.contracted_shell_starts(slice(None))],
+            [0, 0, 1],
+        )
+
+        reference_molecule = gto.M(
+            atom="C 0 0 0",
+            basis="sto-3g",
+            unit="Bohr",
+            cart=True,
+            verbose=0,
+        )
+        np.testing.assert_allclose(
+            overlap_integrals_22(basis),
+            reference_molecule.intor("int1e_ovlp_cart"),
+            rtol=1e-7,
+            atol=1e-10,
+        )
 
 
 class ShellAndHermiteTests(unittest.TestCase):
