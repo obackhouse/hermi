@@ -1,77 +1,65 @@
-"""Auxiliary Coulomb terms in the Hermite basis."""
+"""Coulomb integrals."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from pymmd.boys import boys
-from pymmd.hermite import hermite_indices
+from pymmd.hermite import expansion_pair_matrix, hermite_indices
+from pymmd.integral import _reduce_primitive_pair, _unpack_from_shell_pair_major, hermite_operator_matrix_indices
+from pymmd.screening import AttenuationScreening
+from pymmd.symmetry import SymmetryN4S8
 from pymmd.util import outer_powers
 
 if TYPE_CHECKING:
     from typing import Literal
 
-    from numpy import float64, int64
+    from numpy import float64
 
     from pymmd._typing import array
-    from pymmd.basis import ShellPairView
+    from pymmd.basis import Basis, ShellPairView
 
 
 @dataclass
-class CoulombIntermediates:
-    """Reusable quantities for a primitive shell-pair quartet."""
+class CoulombIntermediates22:
+    r"""Intermediates for primitive :math:`(ab|\hat{O}_\mathrm{coulomb}|cd)` integrals."""
 
     exponent_product: array[tuple[int, int], float64]
     exponent_sum: array[tuple[int, int], float64]
 
     @classmethod
-    def from_shell_pairs(cls, pair_ab: ShellPairView, pair_cd: ShellPairView) -> CoulombIntermediates:
+    def from_shell_pairs(cls, pair_ab: ShellPairView, pair_cd: ShellPairView) -> CoulombIntermediates22:
         """Compute shared exponents for a shell quartet."""
         exponent_product = np.multiply.outer(pair_ab.exponent.ravel(), pair_cd.exponent.ravel())
         exponent_sum = np.add.outer(pair_ab.exponent.ravel(), pair_cd.exponent.ravel())
         return cls(exponent_product=exponent_product, exponent_sum=exponent_sum)
 
 
-@lru_cache(maxsize=None)
-def _coulomb_matrix_indices(
-    angular_momentum_ab: int,
-    angular_momentum_cd: int,
-    sign_side: Literal["bra", "ket"] = "ket",
-) -> tuple[array[tuple[int, int], int64], array[tuple[int], float64]]:
-    """Return Hermite sum indices and ket signs for a shell-pair quartet."""
-    max_order = angular_momentum_ab + angular_momentum_cd
-    hermite_ab = np.asarray(hermite_indices(angular_momentum_ab), dtype=np.int64)
-    hermite_cd = np.asarray(hermite_indices(angular_momentum_cd), dtype=np.int64)
-    hermite_all = np.asarray(hermite_indices(max_order), dtype=np.int64)
-
-    hermite_map = np.full((max_order + 1,) * 3, -1, dtype=np.int64)
-    hermite_map[tuple(hermite_all.T)] = np.arange(len(hermite_all), dtype=np.int64)
-
-    hermite_sums = hermite_ab[:, None, :] + hermite_cd[None, :, :]
-    sum_indices = hermite_map[tuple(hermite_sums.transpose(2, 0, 1))]
-
-    signed_indices = hermite_ab if sign_side == "bra" else hermite_cd
-    signs = np.where(np.sum(signed_indices, axis=-1) % 2 == 0, 1.0, -1.0)
-
-    return sum_indices, signs
-
-
-def auxiliary_coulomb_matrix(
+def coulomb_operator_hermite_22(
     pair_ab: ShellPairView,
     pair_cd: ShellPairView,
-    intermediates: CoulombIntermediates | None = None,
+    intermediates: CoulombIntermediates22 | None = None,
     parity: Literal["bra", "ket"] = "ket",
 ) -> tuple[
     array[tuple[int, int, int, int], float64],
     array[tuple[int], float64],
 ]:
-    """Assemble the signed Hermite Coulomb interaction matrix."""
+    r"""Compute the Coulomb operator in the Hermite basis for :math:`(ab|\hat{O}_\mathrm{coulomb}|cd)` integrals.
+
+    Args:
+        pair_ab: First contracted shell pair.
+        pair_cd: Second contracted shell pair.
+        intermediates: Precomputed intermediates for the shell pairs.
+        parity: Which side of the operator to apply the sign to.
+
+    Returns:
+        Hermite operator matrix and signs.
+    """
     if intermediates is None:
-        intermediates = CoulombIntermediates.from_shell_pairs(pair_ab, pair_cd)
+        intermediates = CoulombIntermediates22.from_shell_pairs(pair_ab, pair_cd)
     max_order = pair_ab.angular_momentum + pair_cd.angular_momentum
     if parity == "bra":
         displacement = pair_cd.position.reshape(1, -1, 3) - pair_ab.position.reshape(-1, 1, 3)
@@ -84,36 +72,158 @@ def auxiliary_coulomb_matrix(
 
     auxiliary = np.zeros((max_order + 1,) * 4 + (len(pair_ab), len(pair_cd)), dtype=np.float64)
 
-    # R_n^000
+    # R_n^000 fundamental
     auxiliary[0, 0, 0] = np.moveaxis(outer_powers(-2 * rho, max_order) * boys(argument, max_order), -1, 0)
 
-    # R_n^t00
-    for t in range(max_order):
-        valid = max_order - t
-        auxiliary[t + 1, 0, 0, :valid] = auxiliary[t, 0, 0, 1 : valid + 1] * displacement[..., 0]
-        if t:
-            auxiliary[t + 1, 0, 0, :valid] += t * auxiliary[t - 1, 0, 0, 1 : valid + 1]
+    for t, u, v in hermite_indices(max_order)[1:]:
+        order = t + u + v
+        valid = max_order - order + 1
 
-    # R_n^tu0
-    for t in range(max_order + 1):
-        for u in range(max_order - t):
-            valid = max_order - t - u
-            auxiliary[t, u + 1, 0, :valid] = auxiliary[t, u, 0, 1 : valid + 1] * displacement[..., 1]
-            if u:
-                auxiliary[t, u + 1, 0, :valid] += u * auxiliary[t, u - 1, 0, 1 : valid + 1]
+        if v:
+            # R_n^t00
+            auxiliary[t, u, v, :valid] = auxiliary[t, u, v - 1, 1 : valid + 1] * displacement[..., 2]
+            if v > 1:
+                auxiliary[t, u, v, :valid] += (v - 1) * auxiliary[t, u, v - 2, 1 : valid + 1]
 
-    # R_n^tuv
-    for t in range(max_order + 1):
-        for u in range(max_order - t + 1):
-            for v in range(max_order - t - u):
-                valid = max_order - t - u - v
-                auxiliary[t, u, v + 1, :valid] = auxiliary[t, u, v, 1 : valid + 1] * displacement[..., 2]
-                if v:
-                    auxiliary[t, u, v + 1, :valid] += v * auxiliary[t, u, v - 1, 1 : valid + 1]
+        elif u:
+            # R_n^tu0
+            auxiliary[t, u, v, :valid] = auxiliary[t, u - 1, v, 1 : valid + 1] * displacement[..., 1]
+            if u > 1:
+                auxiliary[t, u, v, :valid] += (u - 1) * auxiliary[t, u - 2, v, 1 : valid + 1]
+
+        else:
+            # R_n^tuv
+            auxiliary[t, u, v, :valid] = auxiliary[t - 1, u, v, 1 : valid + 1] * displacement[..., 0]
+            if t > 1:
+                auxiliary[t, u, v, :valid] += (t - 1) * auxiliary[t - 2, u, v, 1 : valid + 1]
 
     indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
-    sum_indices, signs = _coulomb_matrix_indices(pair_ab.angular_momentum, pair_cd.angular_momentum, sign_side=parity)
+    sum_indices, signs = hermite_operator_matrix_indices(
+        pair_ab.angular_momentum,
+        pair_cd.angular_momentum,
+        sign_side=parity,
+    )
     zero_order = np.moveaxis(auxiliary[*indices, 0], 0, -1)
     matrix = np.take(zero_order, sum_indices, axis=-1)
 
     return matrix, signs
+
+
+def coulomb_integral_22(
+    pair_ab: ShellPairView,
+    pair_cd: ShellPairView,
+    expansion_ab: array[tuple[int, int, int], float64] | None = None,
+    expansion_cd: array[tuple[int, int, int], float64] | None = None,
+    intermediates: CoulombIntermediates22 | None = None,
+    *,
+    spherical: bool = False,
+) -> array[tuple[int, int, int, int], float64]:
+    r"""Compute a contracted :math:`(ab|\hat{O}_\mathrm{coulomb}|cd)` integral block.
+
+    Args:
+        pair_ab: First contracted shell pair.
+        pair_cd: Second contracted shell pair.
+        expansion_ab: Expansion coefficients for the first shell pair.
+        expansion_cd: Expansion coefficients for the second shell pair.
+        intermediates: Precomputed intermediates for the shell pairs.
+        spherical: Return real spherical instead of Cartesian integrals.
+
+    Returns:
+        Contracted Cartesian or real spherical :math:`(ab|\hat{O}_\mathrm{coulomb}|cd)` integral block.
+    """
+    if intermediates is None:
+        intermediates = CoulombIntermediates22.from_shell_pairs(pair_ab, pair_cd)
+    if expansion_ab is None:
+        expansion_ab = expansion_pair_matrix(pair_ab, spherical=spherical)
+    if expansion_cd is None:
+        expansion_cd = expansion_pair_matrix(pair_cd, spherical=spherical)
+    coulomb, signs = coulomb_operator_hermite_22(pair_ab, pair_cd, intermediates=intermediates, parity="bra")
+
+    # cd kl q, q -> cd kl q
+    expansion_ab = expansion_ab * signs
+
+    # ab ij p -> ab 1 ij p
+    expansion_ab = np.expand_dims(expansion_ab, axis=1)
+
+    # cd kl q -> 1 cd kl q
+    expansion_cd = np.expand_dims(expansion_cd, axis=0)
+
+    # ab cd p q, ab cd -> ab cd p q
+    coulomb *= np.expand_dims(np.multiply.outer(pair_ab.coefficient.ravel(), pair_cd.coefficient.ravel()), axis=(2, 3))
+    coulomb /= np.expand_dims(intermediates.exponent_product, axis=(2, 3))
+    coulomb /= np.expand_dims(np.sqrt(intermediates.exponent_sum), axis=(2, 3))
+
+    # ab cd p [q], 1 cd kl [q] -> ab cd p kl
+    contracted = coulomb @ expansion_cd.mT
+
+    # Reduce the c and d shell axes
+    contracted = _reduce_primitive_pair(contracted, pair_cd, axis=1)
+
+    # ab 1 ij [p], ab cd [p] kl -> ab cd ij kl
+    contracted = expansion_ab @ contracted
+
+    # Reduce the a and b shell axes
+    contracted = _reduce_primitive_pair(contracted, pair_ab, axis=0)
+
+    # ab cd ij kl -> ai bj ck dl
+    contracted = _unpack_from_shell_pair_major(
+        contracted,
+        pair_ab.shell_i,
+        pair_ab.shell_j,
+        pair_cd.shell_i,
+        pair_cd.shell_j,
+        spherical=spherical,
+    )
+
+    return (2 * np.pi**2.5) * contracted  # type: ignore[no-any-return]
+
+
+def coulomb_integrals_22(
+    basis: Basis,
+    *,
+    spherical: bool = False,
+) -> array[tuple[int, int, int, int], float64]:
+    r"""Compute all contracted :math:`(ab|\hat{O}_\mathrm{coulomb}|cd)` integrals.
+
+    Args:
+        basis: Basis set.
+        spherical: Return real spherical instead of Cartesian integrals.
+
+    Returns:
+        Contracted Cartesian or real spherical :math:`(ab|\hat{O}_\mathrm{coulomb}|cd)` integrals.
+    """
+    num_aos = basis.num_contracted_spherical_aos if spherical else basis.num_contracted_cartesian_aos
+    tensor = np.zeros((num_aos, num_aos, num_aos, num_aos), dtype=np.float64)
+
+    # Order the basis set to make equal angular momentum shells contiguous
+    basis, indices = basis.ordered_by_angular_momentum(spherical=spherical)
+
+    # Get the symmetry helper
+    symmetry = SymmetryN4S8(tensor.shape)
+
+    # Find pairs and expansion coefficients
+    pairs = list(basis.iter_shell_pair_groups(unique=True, screening=AttenuationScreening(basis)))
+    expansions = {pair: expansion_pair_matrix(pair, spherical=spherical) for pair in pairs}
+
+    # Compute tensor blocks
+    for m, pair_ab in enumerate(pairs):
+        i, j = pair_ab.spherical_ao_slices if spherical else pair_ab.cartesian_ao_slices
+        for n, pair_cd in enumerate(pairs):
+            if n < m:
+                continue
+            k, l = pair_cd.spherical_ao_slices if spherical else pair_cd.cartesian_ao_slices
+            intermediates = CoulombIntermediates22.from_shell_pairs(pair_ab, pair_cd)
+            block = coulomb_integral_22(
+                pair_ab,
+                pair_cd,
+                expansion_ab=expansions[pair_ab],
+                expansion_cd=expansions[pair_cd],
+                intermediates=intermediates,
+                spherical=spherical,
+            )
+            symmetry.set_value(tensor, (i, j, k, l), block)
+
+    # Reorder the tensor to match the original basis ordering
+    tensor = tensor[np.ix_(indices, indices, indices, indices)]
+
+    return tensor

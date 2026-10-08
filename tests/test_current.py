@@ -10,9 +10,10 @@ from scipy.special import erf
 
 from pymmd.basis import Basis, Shells
 from pymmd.boys import boys
-from pymmd.coulomb import auxiliary_coulomb_matrix
-from pymmd.eri import electron_repulsion_integrals
-from pymmd.hermite import expansion_coefficients, expansion_matrix
+from pymmd.coulomb import coulomb_integrals_22, coulomb_operator_hermite_22
+from pymmd.hermite import expansion_pair_coefficients, expansion_pair_matrix
+from pymmd.kinetic import kinetic_integrals_22
+from pymmd.overlap import overlap_integrals_22
 from pymmd.util import cartesian_normalization
 
 
@@ -69,7 +70,7 @@ class ShellAndHermiteTests(unittest.TestCase):
         """Check the base value and first p-shell recurrence values."""
         basis = make_basis([[0, 0, 0], [2, 0, 0]], [1, 2], [1, 0])
         pair = basis[0:1, 1:2]
-        coefficients = expansion_coefficients(pair, axis=0)
+        coefficients = expansion_pair_coefficients(pair, axis=0)
         attenuation = np.exp(-8 / 3)
 
         self.assertEqual(coefficients.shape, (1, 1, 2, 2, 1))
@@ -81,7 +82,7 @@ class ShellAndHermiteTests(unittest.TestCase):
         """Check the Cartesian-to-Hermite gather for a p-s pair."""
         basis = make_basis([[0, 0, 0], [2, 0, 0]], [1, 2], [1, 0])
         pair = basis[0:1, 1:2]
-        matrix = expansion_matrix(pair)
+        matrix = expansion_pair_matrix(pair)
         attenuation = np.exp(-8 / 3)
 
         self.assertEqual(matrix.shape, (1, 3, 4))
@@ -124,8 +125,74 @@ class ShellAndHermiteTests(unittest.TestCase):
         np.testing.assert_allclose(values[1, 0], expected_f0)
         np.testing.assert_allclose(values[1, 1], (expected_f0 - np.exp(-2)) / 4)
 
-    def test_ssss_auxiliary_coulomb_matrix_shape_and_value(self) -> None:
-        """Check the ssss Hermite Coulomb matrix against the Boys value."""
+    def test_overlap_integrals_against_pyscf(self) -> None:
+        """Compare Cartesian and spherical overlap matrices against PySCF."""
+        basis = make_basis(
+            [[0, 0, 0], [1.3, 0, 0], [0, 1.1, 0]],
+            [0.8, 1.1, 0.9],
+            [1, 0, 1],
+        )
+        molecule = gto.M(
+            atom=[("H", (0, 0, 0)), ("He", (1.3, 0, 0)), ("Li", (0, 1.1, 0))],
+            basis={
+                "H": [[1, [0.8, 1.0]]],
+                "He": [[0, [1.1, 1.0]]],
+                "Li": [[1, [0.9, 1.0]]],
+            },
+            unit="Bohr",
+            cart=True,
+            verbose=0,
+        )
+
+        cartesian = overlap_integrals_22(basis)
+        cartesian_reference = molecule.intor("int1e_ovlp_cart")
+        self.assertEqual(cartesian.shape, cartesian_reference.shape)
+        np.testing.assert_allclose(cartesian, cartesian_reference, rtol=1e-10, atol=1e-12)
+
+        spherical = overlap_integrals_22(basis, spherical=True)
+        spherical_reference = molecule.intor("int1e_ovlp_sph")
+        self.assertEqual(spherical.shape, spherical_reference.shape)
+        np.testing.assert_allclose(spherical, spherical_reference, rtol=1e-10, atol=1e-12)
+
+    def test_contracted_kinetic_integrals_against_pyscf(self) -> None:
+        """Compare contracted Cartesian and spherical kinetic matrices against PySCF."""
+        shells = Shells(
+            position=np.asarray(
+                [[0, 0, 0], [0, 0, 0], [1.3, 0, 0], [1.3, 0, 0], [0, 1.1, 0]],
+                dtype=np.float64,
+            ),
+            exponent=np.asarray([0.8, 0.2, 1.1, 0.3, 0.9], dtype=np.float64),
+            coefficient=np.asarray([0.35, 0.65, 0.6, 0.4, 1.0], dtype=np.float64),
+            angular_momentum=np.asarray([1, 1, 0, 0, 2], dtype=np.int64),
+            shell_indices=np.asarray([0, 0, 2, 2, 4], dtype=np.int64),
+        )
+        basis = Basis.from_shells(shells).normalize()
+
+        molecule = gto.M(
+            atom=[("H", (0, 0, 0)), ("He", (1.3, 0, 0)), ("Li", (0, 1.1, 0))],
+            basis={
+                "H": [[1, [0.8, 0.35], [0.2, 0.65]]],
+                "He": [[0, [1.1, 0.6], [0.3, 0.4]]],
+                "Li": [[2, [0.9, 1.0]]],
+            },
+            unit="Bohr",
+            cart=True,
+            verbose=0,
+        )
+
+        for spherical, integral_name in ((False, "int1e_kin_cart"), (True, "int1e_kin_sph")):
+            with self.subTest(spherical=spherical):
+                kinetic = kinetic_integrals_22(basis, spherical=spherical)
+                reference = molecule.intor(integral_name)
+                overlap_name = "int1e_ovlp_sph" if spherical else "int1e_ovlp_cart"
+                reference_overlap = molecule.intor(overlap_name)
+                reference_scale = 1 / np.sqrt(np.diag(reference_overlap))
+                reference *= reference_scale[:, None] * reference_scale[None, :]
+                self.assertEqual(kinetic.shape, reference.shape)
+                np.testing.assert_allclose(kinetic, reference, rtol=1e-10, atol=1e-12)
+
+    def test_ssss_coulomb_operator_shape_and_value(self) -> None:
+        """Check the ssss Hermite operator matrix against the Boys value."""
         basis = make_basis(
             [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
             [1, 1, 1, 1],
@@ -134,7 +201,7 @@ class ShellAndHermiteTests(unittest.TestCase):
         pair_ab = basis[0:1, 1:2]
         pair_cd = basis[2:3, 3:4]
 
-        matrix, signs = auxiliary_coulomb_matrix(pair_ab, pair_cd)
+        matrix, signs = coulomb_operator_hermite_22(pair_ab, pair_cd)
 
         rho = pair_ab.exponent[0, 0] * pair_cd.exponent[0, 0] / (pair_ab.exponent[0, 0] + pair_cd.exponent[0, 0])
         argument = rho * np.sum((pair_ab.position[0, 0] - pair_cd.position[0, 0]) ** 2)
@@ -143,7 +210,7 @@ class ShellAndHermiteTests(unittest.TestCase):
         np.testing.assert_allclose(matrix[0, 0, 0, 0], expected)
         np.testing.assert_array_equal(signs, [1.0])
 
-    def test_coulomb_matrix_pair_indices_and_ket_sign(self) -> None:
+    def test_coulomb_operator_pair_indices_and_ket_sign(self) -> None:
         """Check a first-order Hermite element and the ket sign convention."""
         basis = make_basis(
             [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
@@ -152,7 +219,7 @@ class ShellAndHermiteTests(unittest.TestCase):
         )
         pair_ab = basis[0:1, 1:2]
         pair_cd = basis[2:3, 3:4]
-        matrix, signs = auxiliary_coulomb_matrix(pair_ab, pair_cd)
+        matrix, signs = coulomb_operator_hermite_22(pair_ab, pair_cd)
 
         argument = 0.75
         first_order = boys(np.asarray(argument), max_order=1)[1]
@@ -162,14 +229,14 @@ class ShellAndHermiteTests(unittest.TestCase):
         np.testing.assert_allclose(signed_matrix[0, 0, 3, 0], -first_order)
         np.testing.assert_allclose(signed_matrix[0, 0, 0, 3], first_order)
 
-    def test_electron_repulsion_integrals_against_pyscf(self) -> None:
-        """Compare the full Cartesian ERI tensor against PySCF."""
+    def test_coulomb_integrals_against_pyscf(self) -> None:
+        """Compare the full Cartesian Coulomb integral tensor against PySCF."""
         basis = make_basis(
             [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
             [1, 1, 1, 1],
             [1, 0, 0, 0],
         )
-        eri = electron_repulsion_integrals(basis)
+        eri = coulomb_integrals_22(basis)
 
         atoms = [
             ("H", (0, 0, 0)),
@@ -188,7 +255,7 @@ class ShellAndHermiteTests(unittest.TestCase):
         self.assertEqual(eri.shape, reference.shape)
         np.testing.assert_allclose(eri, reference, rtol=1e-10, atol=1e-12)
 
-    def test_contracted_electron_repulsion_integrals_against_pyscf(self) -> None:
+    def test_contracted_coulomb_integrals_against_pyscf(self) -> None:
         """Compare multi-primitive contracted shells against PySCF."""
         shells = Shells(
             position=np.asarray(
@@ -201,7 +268,7 @@ class ShellAndHermiteTests(unittest.TestCase):
             shell_indices=np.asarray([0, 0, 2, 2], dtype=np.int64),
         )
         basis = Basis.from_shells(shells).normalize()
-        eri = electron_repulsion_integrals(basis)
+        eri = coulomb_integrals_22(basis)
 
         atoms = [("H", (0, 0, 0)), ("Li", (1.3, 0, 0))]
         pyscf_basis = {
@@ -213,14 +280,14 @@ class ShellAndHermiteTests(unittest.TestCase):
         self.assertEqual(eri.shape, reference.shape)
         np.testing.assert_allclose(eri, reference, rtol=1e-10, atol=1e-12)
 
-    def test_spherical_electron_repulsion_integrals_against_pyscf(self) -> None:
+    def test_spherical_coulomb_integrals_against_pyscf(self) -> None:
         """Compare mixed spherical shells against PySCF."""
         basis = make_basis(
             [[0, 0, 0], [0, 0, 0], [1.3, 0, 0]],
             [1.1, 0.8, 0.9],
             [0, 2, 1],
         )
-        eri = electron_repulsion_integrals(basis, spherical=True)
+        eri = coulomb_integrals_22(basis, spherical=True)
 
         pyscf_basis = {
             "H": [[0, [1.1, 1.0]], [2, [0.8, 1.0]]],
@@ -238,7 +305,7 @@ class ShellAndHermiteTests(unittest.TestCase):
         self.assertEqual(eri.shape, reference.shape)
         np.testing.assert_allclose(eri, reference, rtol=1e-10, atol=1e-12)
 
-    def test_contracted_spherical_electron_repulsion_integrals_against_pyscf(self) -> None:
+    def test_contracted_spherical_coulomb_integrals_against_pyscf(self) -> None:
         """Compare contracted spherical shells against PySCF."""
         shells = Shells(
             position=np.asarray(
@@ -250,7 +317,7 @@ class ShellAndHermiteTests(unittest.TestCase):
             angular_momentum=np.asarray([2, 2, 0, 0], dtype=np.int64),
             shell_indices=np.asarray([0, 0, 2, 2], dtype=np.int64),
         )
-        eri = electron_repulsion_integrals(Basis.from_shells(shells).normalize(), spherical=True)
+        eri = coulomb_integrals_22(Basis.from_shells(shells).normalize(), spherical=True)
 
         pyscf_basis = {
             "H": [[2, [0.8, 0.35], [0.2, 0.65]]],

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, overload
 import numpy as np
 
 from pymmd.screening import NoScreening
-from pymmd.symmetry import SymmetryN2S2
+from pymmd.symmetry import SymmetryN2S1, SymmetryN2S2
 from pymmd.util import num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
@@ -282,7 +282,7 @@ class Basis(DefaultHash):
     ) -> Iterable[ShellPairView]:
         """Iterate over contracted shell-pair views."""
         shells = list(self.iter_shells())
-        symmetry = SymmetryN2S2((len(shells), len(shells)))
+        symmetry = (SymmetryN2S2 if unique else SymmetryN2S1)((len(shells), len(shells)))
         for (i, j), _ in symmetry.canonical_indices():
             shell_pair = self[shells[i], shells[j]]
             assert isinstance(shell_pair, ShellPairView)
@@ -317,7 +317,7 @@ class Basis(DefaultHash):
         If screened, each rectangle contains only shell pairs that pass screening.
         """
         shell_groups = list(self.iter_shell_groups())
-        symmetry = SymmetryN2S2((len(shell_groups), len(shell_groups)))
+        symmetry = (SymmetryN2S2 if unique else SymmetryN2S1)((len(shell_groups), len(shell_groups)))
         for (i, j), _ in symmetry.canonical_indices():
             shell_pair = self[shell_groups[i], shell_groups[j]]
             assert isinstance(shell_pair, ShellPairView)
