@@ -7,7 +7,6 @@ from math import factorial, prod
 from typing import TYPE_CHECKING, overload
 
 import numpy as np
-from numba import njit, prange
 from scipy.special import lpmv
 
 if TYPE_CHECKING:
@@ -30,57 +29,6 @@ class DefaultHash:
 
     def __hash__(self) -> int:
         return object.__hash__(self)
-
-
-@njit(parallel=True, cache=True)
-def _add_reduceat_3d(
-    values: array[tuple[int, int, int], float64],
-    indices: array[tuple[int], int64],
-) -> array[tuple[int, int, int], float64]:
-    """Reduce a 3D array along the middle axis at the given segment starts."""
-    shape = (values.shape[0], indices.size, values.shape[2])
-    result = np.empty(shape, dtype=values.dtype)
-    for i in prange(shape[0]):
-        for j in range(shape[1]):
-            start = indices[j]
-            stop = values.shape[1] if j + 1 == shape[1] else indices[j + 1]
-            for k in range(shape[2]):
-                total = values[i, start, k]
-                for l in range(start + 1, stop):
-                    total += values[i, l, k]
-                result[i, j, k] = total
-    return result
-
-
-def add_reduceat[S: tuple[int, ...]](
-    values: array[S, float64],
-    indices: array[tuple[int], int64],
-    axis: int = 0,
-) -> array[S, float64]:
-    """Sum segments along an axis using a parallel Numba kernel.
-
-    Args:
-        values: Values to reduce.
-        indices: Segment start indices.
-        axis: Axis along which to reduce.
-
-    Returns:
-        Segment sums with the reduced axis replaced by the number of indices.
-    """
-    shape = values.shape
-    values_3d = values.reshape(prod(shape[:axis]), shape[axis], prod(shape[axis + 1 :]))
-    reduced = _add_reduceat_3d(values_3d, indices)
-    reduced_shape = (*shape[:axis], indices.size, *shape[axis + 1 :])
-    return reduced.reshape(reduced_shape)  # type: ignore[return-value]
-
-
-def _add_reduceat_numpy[S: tuple[int, ...]](
-    values: array[S, float64],
-    indices: array[tuple[int], int64],
-    axis: int = 0,
-) -> array[S, float64]:
-    """Reduce segments with NumPy."""
-    return np.add.reduceat(values, indices, axis=axis)  # type: ignore[return-value]
 
 
 def outer_powers(

@@ -15,7 +15,7 @@ from hermi.util import (
 )
 
 if TYPE_CHECKING:
-    from typing import Literal
+    from typing import Any, Literal
 
     from numpy import float64, int64
 
@@ -177,17 +177,217 @@ def expansion_pair_coefficients(
     coefficients[..., 0, 0, 0] = pair.attenuation[..., axis]
 
     # E_t^i0
-    for i in range(pair.shell_i.angular_momentum):
+    for i in range(angular_momentum_i):
         raise_coefficient(coefficients[..., :, i, 0], coefficients[..., :, i + 1, 0], offset_a)
 
     # E_t^ij
     for i, j in itertools.product(
-        range(pair.shell_i.angular_momentum + 1),
+        range(angular_momentum_i + 1),
         range(angular_momentum_j),
     ):
         raise_coefficient(coefficients[..., :, i, j], coefficients[..., :, i, j + 1], offset_b)
 
     return coefficients
+
+
+def expansion_pair_coefficients_coordinate_product(
+    pair: ShellPairView,
+    axis: int,
+    *,
+    angular_momentum_i: int | None = None,
+    angular_momentum_j: int | None = None,
+    max_order: int | None = None,
+    origin: float = 0.0,
+) -> array[tuple[int, int, int, int, int], float64]:
+    r"""Compute one-dimensional Hermite expansion pair coefficients :math:`E_t^{ij}` after multiplying by a coordinate.
+
+    Args:
+        pair: Shell pair view.
+        axis: Cartesian axis.
+        angular_momentum_i: Angular momentum of the first shell.
+        angular_momentum_j: Angular momentum of the second shell.
+        max_order: Maximum Hermite order to generate.
+        origin: Coordinate origin for the multiplication.
+
+    Returns:
+        Expansion pair coefficients after coordinate multiplication.
+    """
+    if angular_momentum_i is None:
+        angular_momentum_i = pair.shell_i.angular_momentum
+    if angular_momentum_j is None:
+        angular_momentum_j = pair.shell_j.angular_momentum
+    if max_order is None:
+        max_order = angular_momentum_i + angular_momentum_j + 1
+    coefficients = expansion_pair_coefficients(
+        pair,
+        axis,
+        angular_momentum_i=angular_momentum_i,
+        angular_momentum_j=angular_momentum_j + 1,
+        max_order=max_order,
+    )
+    offset = np.expand_dims(pair.shell_j.position[..., axis], axis=(0, 2, 3, 4)) - origin
+    return coefficients[..., 1:] + offset * coefficients[..., :-1]
+
+
+def _expansion_pair_coefficients_derivative_side(
+    pair: ShellPairView,
+    axis: int,
+    side: Literal["bra", "ket"],
+    *,
+    derivative_order: int = 1,
+    angular_momentum_i: int | None = None,
+    angular_momentum_j: int | None = None,
+    max_order: int | None = None,
+) -> array[tuple[int, int, int, int, int], float64]:
+    """Differentiate one Gaussian."""
+    if derivative_order < 0:
+        raise ValueError("derivative_order must be nonnegative")
+    if angular_momentum_i is None:
+        angular_momentum_i = pair.shell_i.angular_momentum
+    if angular_momentum_j is None:
+        angular_momentum_j = pair.shell_j.angular_momentum
+    if max_order is None:
+        max_order = angular_momentum_i + angular_momentum_j + derivative_order
+    if side == "bra":
+        count = angular_momentum_i + 1
+        exponent = pair.shell_i.exponent[:, None]
+        extra_i, extra_j = derivative_order, 0
+    else:
+        count = angular_momentum_j + 1
+        exponent = pair.shell_j.exponent[None, :]
+        extra_i, extra_j = 0, derivative_order
+
+    coefficients = expansion_pair_coefficients(
+        pair,
+        axis,
+        angular_momentum_i=angular_momentum_i + extra_i,
+        angular_momentum_j=angular_momentum_j + extra_j,
+        max_order=max_order,
+    )
+
+    weights = np.zeros((*pair.exponent.shape, count, count + derivative_order), dtype=np.float64)
+    indices = np.arange(count)
+    weights[..., indices, indices] = 1.0
+    for _ in range(derivative_order):
+        updated = np.zeros_like(weights)
+        powers = np.arange(1, weights.shape[-1], dtype=np.float64)
+        updated[..., :-1] += weights[..., 1:] * powers
+        updated[..., 1:] -= 2 * exponent[..., None, None] * weights[..., :-1]
+        weights = updated
+
+    if side == "bra":
+        return np.expand_dims(weights, axis=2) @ coefficients
+    return coefficients @ np.expand_dims(weights, axis=1).mT
+
+
+def expansion_pair_coefficients_derivative_bra(
+    pair: ShellPairView,
+    axis: int,
+    *,
+    derivative_order: int = 1,
+    angular_momentum_i: int | None = None,
+    angular_momentum_j: int | None = None,
+    max_order: int | None = None,
+) -> array[tuple[int, int, int, int, int], float64]:
+    r"""Compute one-dimensional Hermite expansion pair coefficients :math:`E_t^{ij}` after differentiating the bra.
+
+    Args:
+        pair: Shell pair view.
+        axis: Cartesian axis.
+        derivative_order: Order of the derivative.
+        angular_momentum_i: Angular momentum of the first shell.
+        angular_momentum_j: Angular momentum of the second shell.
+        max_order: Maximum Hermite order to generate.
+
+    Returns:
+        Expansion pair coefficients after differentiating the bra.
+    """
+    return _expansion_pair_coefficients_derivative_side(
+        pair,
+        axis,
+        "bra",
+        derivative_order=derivative_order,
+        angular_momentum_i=angular_momentum_i,
+        angular_momentum_j=angular_momentum_j,
+        max_order=max_order,
+    )
+
+
+def expansion_pair_coefficients_derivative_ket(
+    pair: ShellPairView,
+    axis: int,
+    *,
+    derivative_order: int = 1,
+    angular_momentum_i: int | None = None,
+    angular_momentum_j: int | None = None,
+    max_order: int | None = None,
+) -> array[tuple[int, int, int, int, int], float64]:
+    r"""Compute one-dimensional Hermite expansion pair coefficients :math:`E_t^{ij}` after differentiating the ket.
+
+    Args:
+        pair: Shell pair view.
+        axis: Cartesian axis.
+        derivative_order: Order of the derivative.
+        angular_momentum_i: Angular momentum of the first shell.
+        angular_momentum_j: Angular momentum of the second shell.
+        max_order: Maximum Hermite order to generate.
+
+    Returns:
+        Expansion pair coefficients after differentiating the ket.
+    """
+    return _expansion_pair_coefficients_derivative_side(
+        pair,
+        axis,
+        "ket",
+        derivative_order=derivative_order,
+        angular_momentum_i=angular_momentum_i,
+        angular_momentum_j=angular_momentum_j,
+        max_order=max_order,
+    )
+
+
+def expansion_pair_coefficients_derivative(
+    pair: ShellPairView,
+    axis: int,
+    *,
+    derivative_order: int = 1,
+    angular_momentum_i: int | None = None,
+    angular_momentum_j: int | None = None,
+    max_order: int | None = None,
+) -> array[tuple[int, int, int, int, int], float64]:
+    r"""Compute one-dimensional Hermite expansion pair coefficients :math:`E_t^{ij}` after differentiating.
+
+    Args:
+        pair: Shell pair view.
+        axis: Cartesian axis.
+        derivative_order: Order of the derivative.
+        angular_momentum_i: Angular momentum of the first shell.
+        angular_momentum_j: Angular momentum of the second shell.
+        max_order: Maximum Hermite order to generate.
+
+    Returns:
+        Expansion pair coefficients after differentiating.
+    """
+    if derivative_order < 0:
+        raise ValueError("derivative_order must be nonnegative")
+    if angular_momentum_i is None:
+        angular_momentum_i = pair.shell_i.angular_momentum
+    if angular_momentum_j is None:
+        angular_momentum_j = pair.shell_j.angular_momentum
+    if max_order is None:
+        max_order = angular_momentum_i + angular_momentum_j + derivative_order
+    coefficients = expansion_pair_coefficients(
+        pair,
+        axis,
+        angular_momentum_i=angular_momentum_i,
+        angular_momentum_j=angular_momentum_j,
+        max_order=max_order,
+    )
+    result = np.zeros_like(coefficients)
+    if derivative_order <= max_order:
+        phase = (-1) ** derivative_order
+        result[..., derivative_order:] = phase * coefficients[..., : max_order + 1 - derivative_order]
+    return result
 
 
 def expansion_pair_matrix(
@@ -196,26 +396,50 @@ def expansion_pair_matrix(
     angular_momentum_i: int | None = None,
     angular_momentum_j: int | None = None,
     max_order: int | None = None,
+    mode: Literal["base", "coordinate-product", "derivative-bra", "derivative-ket", "derivative"] = "base",
+    mode_axis: int = 0,
+    derivative_order: int = 1,
+    origin: float = 0.0,
     spherical: bool = False,
 ) -> array[tuple[int, int, int], float64]:
-    r"""Assemble the shell-pair to Hermite expansion matrix.
+    r"""Assemble a shell-pair Hermite expansion, optionally transformed along one axis.
 
     Args:
         pair: Shell pair view.
         angular_momentum_i: Angular momentum of the first shell.
         angular_momentum_j: Angular momentum of the second shell.
         max_order: Maximum Hermite order to generate.
+        mode: Cartesian Gaussian transformation to apply.
+        mode_axis: Cartesian axis on which the transformation acts.
+        derivative_order: Order of a derivative transformation.
+        origin: Coordinate origin for coordinate multiplication.
         spherical: Return real spherical functions instead of Cartesian functions.
 
     Returns:
-        Expansion pair matrix.
+        Expansion pair matrix with shape ``(ab, ij, p)``.
     """
     if angular_momentum_i is None:
         angular_momentum_i = pair.shell_i.angular_momentum
     if angular_momentum_j is None:
         angular_momentum_j = pair.shell_j.angular_momentum
+    if mode_axis not in (0, 1, 2):
+        raise ValueError(f"invalid mode_axis: {mode_axis!r}")
+    if derivative_order < 0:
+        raise ValueError("derivative_order must be nonnegative")
+
+    modes = {
+        "base": expansion_pair_coefficients,
+        "coordinate-product": expansion_pair_coefficients_coordinate_product,
+        "derivative-bra": expansion_pair_coefficients_derivative_bra,
+        "derivative-ket": expansion_pair_coefficients_derivative_ket,
+        "derivative": expansion_pair_coefficients_derivative,
+    }
+    if mode not in modes:
+        raise ValueError(f"invalid expansion mode: {mode!r}")
     if max_order is None:
-        max_order = pair.shell_i.angular_momentum + angular_momentum_j
+        extra_order = 1 if mode == "coordinate-product" else derivative_order if mode.startswith("derivative") else 0
+        max_order = angular_momentum_i + angular_momentum_j + extra_order
+
     cartesian_i = cartesian_indices(angular_momentum_i)
     cartesian_j = cartesian_indices(angular_momentum_j)
     indices = np.asarray(hermite_indices(max_order), dtype=np.int64)
@@ -223,19 +447,26 @@ def expansion_pair_matrix(
     # Compute the expansion coefficients along each Cartesian axis
     coefficients = np.ones((len(pair), len(indices), len(cartesian_i) * len(cartesian_j)), dtype=np.float64)
     for axis in range(3):
-        table = expansion_pair_coefficients(
-            pair,
-            axis,
-            angular_momentum_i=angular_momentum_i,
-            angular_momentum_j=angular_momentum_j,
-            max_order=max_order,
-        )
+        options: dict[str, Any] = {
+            "angular_momentum_i": angular_momentum_i,
+            "angular_momentum_j": angular_momentum_j,
+            "max_order": max_order,
+        }
+        if axis == mode_axis and mode != "base":
+            if mode == "coordinate-product":
+                options["origin"] = origin
+            else:
+                options["derivative_order"] = derivative_order
+            table = modes[mode](pair, axis, **options)
+        else:
+            table = expansion_pair_coefficients(pair, axis, **options)
+
         table = np.take(table, indices[:, axis], axis=2)
         table = np.take(table, cartesian_i[:, axis], axis=3)
         table = np.take(table, cartesian_j[:, axis], axis=4)
         coefficients *= table.reshape(coefficients.shape)
 
-    # i, j -> (i j)
+    # ab t ij, ij -> ab t ij
     normalization = np.multiply.outer(
         cartesian_normalization(angular_momentum_i),
         cartesian_normalization(angular_momentum_j),
@@ -243,18 +474,16 @@ def expansion_pair_matrix(
     coefficients *= normalization
 
     if spherical:
-        # i p, j q -> (i j) (p q)
+        # ab t ij, ij pq -> ab t pq
         transform = np.multiply.outer(
             cartesian_to_spherical(angular_momentum_i),
             cartesian_to_spherical(angular_momentum_j),
         )
         transform = transform.transpose(0, 2, 1, 3)
         transform = transform.reshape(len(cartesian_i) * len(cartesian_j), -1)
-
-        # (a b) t (i j), (i j) (p q) -> (a b) t (p q)
         coefficients = coefficients @ transform
 
-    # (a b) t (i j) -> (a b) (i j) t
+    # ab t ij -> ab ij t
     coefficients = coefficients.mT
 
     return coefficients

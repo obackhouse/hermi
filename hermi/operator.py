@@ -21,9 +21,24 @@ if TYPE_CHECKING:
     from hermi.basis import Basis
     from hermi.symmetry import Symmetry
 
-    type OperatorMatrix = array[tuple[int, int, int, int], float64]
-    type ExpansionMatrix = array[tuple[int, int, int], float64]
+    type OperatorMatrix = array[tuple[int, int, int, int], float64] | array[tuple[int, int, int, int, int], float64]
+    type ExpansionMatrix = array[tuple[int, int, int], float64] | array[tuple[int, int, int, int], float64]
     type View = None | ShellView | ShellPairView
+
+
+@overload
+def _get_expansion_matrix(view: None, spherical: bool = False) -> None: ...
+@overload
+def _get_expansion_matrix(view: ShellView | ShellPairView, spherical: bool = False) -> ExpansionMatrix: ...
+
+
+def _get_expansion_matrix(view: View, spherical: bool = False) -> ExpansionMatrix | None:
+    """Get the Hermite expansion matrix for a view."""
+    if isinstance(view, ShellView):
+        return expansion_matrix(view, spherical=spherical)
+    elif isinstance(view, ShellPairView):
+        return expansion_pair_matrix(view, spherical=spherical)
+    return None
 
 
 @overload
@@ -129,11 +144,48 @@ class Operator(ABC):
         pass
 
     @overload
+    def get_expansion_matrices(self, views: tuple[None, None], spherical: bool = False) -> tuple[None, None]: ...
+    @overload
+    def get_expansion_matrices(
+        self, views: tuple[ShellView | ShellPairView, None], spherical: bool = False
+    ) -> tuple[ExpansionMatrix, None]: ...
+    @overload
+    def get_expansion_matrices(
+        self, views: tuple[None, ShellView | ShellPairView], spherical: bool = False
+    ) -> tuple[None, ExpansionMatrix]: ...
+    @overload
+    def get_expansion_matrices(
+        self, views: tuple[ShellView | ShellPairView, ShellView | ShellPairView], spherical: bool = False
+    ) -> tuple[ExpansionMatrix, ExpansionMatrix]: ...
+    @overload
+    def get_expansion_matrices(
+        self, views: tuple[View, View], spherical: bool = False
+    ) -> tuple[ExpansionMatrix | None, ExpansionMatrix | None]: ...
+
+    def get_expansion_matrices(
+        self, views: tuple[View, View], spherical: bool = False
+    ) -> tuple[ExpansionMatrix | None, ExpansionMatrix | None]:
+        r"""Get the Hermite expansion matrices for the bra and ket shells.
+
+        Args:
+            views: Views of the shells to get the expansion matrices for.
+            spherical: Return real spherical instead of Cartesian integrals.
+
+        Returns:
+            Hermite expansion matrices for the bra and ket shells. Shape is ``(n_primitive, n_hermite, n_cartesian)``,
+            where ``n_primitive`` is the number of primitive Gaussians in the shell, ``n_hermite`` is the number of
+            Hermite Gaussians in the shell, and ``n_cartesian`` is the number of Cartesian Gaussians in the shell.
+        """
+        return (
+            _get_expansion_matrix(views[0], spherical=spherical),
+            _get_expansion_matrix(views[1], spherical=spherical),
+        )
+
+    @overload
     def contract(
         self,
         views: tuple[ShellView, None],
         operator: OperatorMatrix | None = None,
-        expansion: tuple[ExpansionMatrix, None] | None = None,
         *,
         spherical: bool = False,
     ) -> array[tuple[int], float64]: ...
@@ -142,7 +194,6 @@ class Operator(ABC):
         self,
         views: tuple[None, ShellView],
         operator: OperatorMatrix | None = None,
-        expansion: tuple[None, ExpansionMatrix] | None = None,
         *,
         spherical: bool = False,
     ) -> array[tuple[int], float64]: ...
@@ -151,7 +202,6 @@ class Operator(ABC):
         self,
         views: tuple[ShellView, ShellView],
         operator: OperatorMatrix | None = None,
-        expansion: tuple[ExpansionMatrix, ExpansionMatrix] | None = None,
         *,
         spherical: bool = False,
     ) -> array[tuple[int, int], float64]: ...
@@ -160,7 +210,6 @@ class Operator(ABC):
         self,
         views: tuple[ShellPairView, None],
         operator: OperatorMatrix | None = None,
-        expansion: tuple[ExpansionMatrix, None] | None = None,
         *,
         spherical: bool = False,
     ) -> array[tuple[int, int], float64]: ...
@@ -169,7 +218,6 @@ class Operator(ABC):
         self,
         views: tuple[None, ShellPairView],
         operator: OperatorMatrix | None = None,
-        expansion: tuple[None, ExpansionMatrix] | None = None,
         *,
         spherical: bool = False,
     ) -> array[tuple[int, int], float64]: ...
@@ -178,7 +226,6 @@ class Operator(ABC):
         self,
         views: tuple[ShellView, ShellPairView] | tuple[ShellPairView, ShellView],
         operator: OperatorMatrix | None = None,
-        expansion: tuple[ExpansionMatrix, ExpansionMatrix] | None = None,
         *,
         spherical: bool = False,
     ) -> array[tuple[int, int, int], float64]: ...
@@ -187,7 +234,6 @@ class Operator(ABC):
         self,
         views: tuple[ShellPairView, ShellPairView],
         operator: OperatorMatrix | None = None,
-        expansion: tuple[ExpansionMatrix, ExpansionMatrix] | None = None,
         *,
         spherical: bool = False,
     ) -> array[tuple[int, int, int, int], float64]: ...
@@ -196,7 +242,6 @@ class Operator(ABC):
         self,
         views: tuple[View, View],
         operator: OperatorMatrix | None = None,
-        expansion: tuple[ExpansionMatrix | None, ExpansionMatrix | None] | None = None,
         *,
         spherical: bool = False,
     ) -> array[tuple[int, ...], float64]:
@@ -205,7 +250,6 @@ class Operator(ABC):
         Args:
             views: Views of the shells to compute the operator matrix for.
             operator: Operator matrix to contract.
-            expansion: Expansion coefficients to contract with the operator matrix.
             spherical: Return real spherical instead of Cartesian integrals.
 
         Returns:
@@ -213,16 +257,7 @@ class Operator(ABC):
         """
         if operator is None:
             operator = self.get_operator_matrix(views)
-        if expansion is None:
-            expansion_list: list[ExpansionMatrix | None] = []
-            for view in views:
-                if isinstance(view, ShellView):
-                    expansion_list.append(expansion_matrix(view, spherical=spherical))
-                elif isinstance(view, ShellPairView):
-                    expansion_list.append(expansion_pair_matrix(view, spherical=spherical))
-                else:
-                    expansion_list.append(None)
-            expansion = (expansion_list[0], expansion_list[1])
+        expansion = self.get_expansion_matrices(views, spherical=spherical)
 
         if check_views_rank(views, (1, 1)):
             return contract_operator_11(operator, *views, *expansion, spherical=spherical)

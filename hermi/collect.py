@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from hermi.hermite import expansion_matrix, expansion_pair_matrix
 from hermi.symmetry import SymmetryN2S1, SymmetryN2S2, SymmetryN4S8
 
 if TYPE_CHECKING:
@@ -14,7 +13,7 @@ if TYPE_CHECKING:
 
     from hermi._typing import array
     from hermi.basis import Basis
-    from hermi.operator import Operator, View
+    from hermi.operator import Operator
     from hermi.symmetry import Symmetry
 
 
@@ -48,22 +47,13 @@ def collect_integral_11(
     # Get the symmetry helper
     symmetry = symmetry_type((len(shells), len(shells)))
 
-    # Get expansion coefficients for pairs and shells
-    expansions: dict[View, array[tuple[int, int, int], float64]] = {}
-    for shell in shells:
-        expansions[shell] = expansion_matrix(shell, spherical=spherical)
-
     # Compute matrix blocks
     for (a, b), _ in symmetry.canonical_indices():
         shell_a = shells[a]
         shell_b = shells[b]
         i = shell_a.spherical_ao_slice if spherical else shell_a.cartesian_ao_slice
         j = shell_b.spherical_ao_slice if spherical else shell_b.cartesian_ao_slice
-        block = operator.contract(
-            (shell_a, shell_b),
-            expansion=(expansions[shell_a], expansions[shell_b]),
-            spherical=spherical,
-        )
+        block = operator.contract((shell_a, shell_b), spherical=spherical)
         symmetry.set_value(matrix, (i, j), block)
 
     # Reorder the matrix back to the original basis order
@@ -103,21 +93,12 @@ def collect_integral_20(
     # Get the symmetry helper
     symmetry = symmetry_type((len(shells), len(shells)))
 
-    # Get expansion coefficients for pairs and shells
-    expansions: dict[View, array[tuple[int, int, int], float64]] = {}
-    for pair in pairs:
-        expansions[pair] = expansion_pair_matrix(pair, spherical=spherical)
-
     # Compute matrix blocks
     for (a, b), _ in symmetry.canonical_indices():
         pair = pairs[symmetry.ravel_asymmetric_index((a, b))]
         i = pair.shell_i.spherical_ao_slice if spherical else pair.shell_i.cartesian_ao_slice
         j = pair.shell_j.spherical_ao_slice if spherical else pair.shell_j.cartesian_ao_slice
-        block = operator.contract(
-            (pair, None),
-            expansion=(expansions[pair], None),
-            spherical=spherical,
-        )
+        block = operator.contract((pair, None), spherical=spherical)
         symmetry.set_value(matrix, (i, j), block)
 
     # Reorder the matrix back to the original basis order
@@ -158,11 +139,6 @@ def collect_integral_22(
     symmetry = symmetry_type((len(shells), len(shells), len(shells), len(shells)))
     pair_symmetry = SymmetryN2S1((len(shells), len(shells)))
 
-    # Get expansion coefficients for pairs and shells
-    expansions: dict[View, array[tuple[int, int, int], float64]] = {}
-    for pair in pairs:
-        expansions[pair] = expansion_pair_matrix(pair, spherical=spherical)
-
     # Compute matrix blocks
     for (a, b, c, d), _ in symmetry.canonical_indices():
         pair_ab = pairs[pair_symmetry.ravel_asymmetric_index((a, b))]
@@ -173,7 +149,6 @@ def collect_integral_22(
         l = pair_cd.shell_j.spherical_ao_slice if spherical else pair_cd.shell_j.cartesian_ao_slice
         block = operator.contract(
             (pair_ab, pair_cd),
-            expansion=(expansions[pair_ab], expansions[pair_cd]),
             spherical=spherical,
         )
         symmetry.set_value(matrix, (i, j, k, l), block)
