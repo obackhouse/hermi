@@ -44,8 +44,28 @@ def _reduce_primitive_pair[S: tuple[int, ...]](
         len(pair.shell_j),
         *values.shape[axis + 1 :],
     )
-    expanded = np.add.reduceat(expanded, pair.basis.contracted_shell_starts(pair.shell_i.indices), axis=axis)
-    expanded = np.add.reduceat(expanded, pair.basis.contracted_shell_starts(pair.shell_j.indices), axis=axis + 1)
+    starts_i = pair.basis.contracted_shell_starts(pair.shell_i.indices)
+    starts_j = pair.basis.contracted_shell_starts(pair.shell_j.indices)
+    lengths_i = np.diff(np.append(starts_i, len(pair.shell_i)))
+    lengths_j = np.diff(np.append(starts_j, len(pair.shell_j)))
+    if (
+        lengths_i.size
+        and lengths_j.size
+        and np.all(lengths_i == lengths_i[0])
+        and np.all(lengths_j == lengths_j[0])
+    ):
+        expanded = expanded.reshape(
+            *expanded.shape[:axis],
+            len(starts_i),
+            lengths_i[0],
+            len(starts_j),
+            lengths_j[0],
+            *expanded.shape[axis + 2 :],
+        )
+        expanded = np.sum(expanded, axis=(axis + 1, axis + 3))
+    else:
+        expanded = np.add.reduceat(expanded, starts_i, axis=axis)
+        expanded = np.add.reduceat(expanded, starts_j, axis=axis + 1)
     expanded = expanded.reshape(
         *values.shape[:axis],
         pair.shell_i.num_shells * pair.shell_j.num_shells,
