@@ -444,6 +444,9 @@ class Basis(DefaultHash):
             return ShellPairView(key[0], key[1])
         raise TypeError(f"invalid key type: {type(key)}")
 
+    def __len__(self) -> int:
+        return self.num_primitive_shells
+
 
 @dataclass(frozen=True, slots=True)
 class ShellView:
@@ -495,6 +498,11 @@ class ShellView:
         shell_slices = _shell_slices(self)
         for start, stop in _true_runs(mask):
             yield self.basis[slice(shell_slices[start].start, shell_slices[stop - 1].stop)]
+
+    @property
+    def rank(self) -> int:
+        """Rank of the view (always 1 for a shell)."""
+        return 1
 
     def __len__(self) -> int:
         start = self.indices.start or 0
@@ -636,6 +644,11 @@ class ShellPairView:
 
         for interval, row_start in sorted(active.items()):
             yield append_rectangle(row_start, shape[0], interval)
+
+    @property
+    def rank(self) -> int:
+        """Rank of the view (always 2 for a shell pair)."""
+        return 2
 
     def __len__(self) -> int:
         start_i = self.indices_i.start or 0

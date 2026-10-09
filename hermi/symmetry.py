@@ -78,6 +78,28 @@ class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
         """
         pass
 
+    def ravel_asymmetric_index(self, index: S) -> int:
+        """Ravel an index as if the array were asymmetric.
+
+        Args:
+            index: Index to ravel.
+
+        Returns:
+            Raveled index.
+        """
+        return int(np.ravel_multi_index(index, self.shape))
+
+    def unravel_asymmetric_index(self, index: int) -> S:
+        """Unravel an index as if the array were asymmetric.
+
+        Args:
+            index: Index to unravel.
+
+        Returns:
+            Unraveled index.
+        """
+        return tuple(map(int, np.unravel_index(index, self.shape)))  # type: ignore[return-value]
+
     @property
     def unravelled_size(self) -> int:
         """Total size of the unravelled array."""
@@ -142,7 +164,7 @@ class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
         Returns:
             Raveled index.
         """
-        return index[0] * self.shape[1] + index[1]
+        return self.ravel_asymmetric_index(index)
 
     def unravel_index(self, index: int) -> tuple[int, int]:
         """Unravel an index according to the symmetry.
@@ -153,7 +175,7 @@ class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
         Returns:
             Unraveled index.
         """
-        return divmod(index, self.shape[1])
+        return self.unravel_asymmetric_index(index)
 
     @property
     def ravelled_size(self) -> int:
@@ -336,7 +358,7 @@ class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
         Returns:
             Raveled index.
         """
-        return int(np.ravel_multi_index(index, self.shape))
+        return self.ravel_asymmetric_index(index)
 
     def unravel_index(self, index: int) -> tuple[int, int, int, int]:
         """Unravel an index according to the symmetry.
@@ -347,7 +369,7 @@ class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
         Returns:
             Unraveled index.
         """
-        return tuple(map(int, np.unravel_index(index, self.shape)))  # type: ignore[return-value]
+        return self.unravel_asymmetric_index(index)
 
     @property
     def ravelled_size(self) -> int:

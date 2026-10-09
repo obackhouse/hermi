@@ -86,10 +86,10 @@ class Molecule(DefaultHash):
         for line in content[2 : 2 + n_atoms]:
             parts = line.split()
             elements.append(periodic_table.find(symbol=parts[0]))
-            coordinates.append(map(float, parts[1:4]))
+            coordinates.append(tuple(map(float, parts[1:4])))
         positions: array[tuple[int, int], float64] = np.array(coordinates, dtype=np.float64)
         if units == "angstrom":
-            positions *= constants.value("Bohr radius") / constants.value("Angstrom")
+            positions *= constants.value("Bohr radius") / constants.value("angstrom")
         return Molecule(elements=elements, positions=positions)
 
     @cached_property

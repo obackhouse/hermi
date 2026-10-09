@@ -11,6 +11,8 @@ from numba import njit, prange
 from scipy.special import lpmv
 
 if TYPE_CHECKING:
+    from typing import Never
+
     from numpy import float64, int64
 
     from hermi._typing import array
@@ -217,3 +219,8 @@ def rebase_slice(source: slice, target: slice) -> slice:
     start = source.start - target.start if source.start is not None else None
     stop = source.stop - target.start if source.stop is not None else None
     return slice(start, stop, source.step)
+
+
+def unreachable() -> Never:
+    """Raise an error indicating that the code is unreachable."""
+    raise AssertionError("unreachable code, this should never happen")
