@@ -20,6 +20,16 @@ def test_kinetic_against_pyscf(example_system, normalized_reference, spherical: 
     np.testing.assert_allclose(actual, reference, rtol=1e-6, atol=1e-8)
 
 
+@pytest.mark.parametrize("spherical, suffix", ((False, "cart"), (True, "sph")))
+def test_kinetic_signature_20_against_pyscf(example_system, normalized_reference, spherical: bool, suffix: str) -> None:
+    """Compare (2, 0) kinetic integrals against PySCF for each example system."""
+    actual = Kinetic().collect(example_system.basis, signature=(2, 0), spherical=spherical)
+    reference = normalized_reference(example_system, f"int1e_kin_{suffix}", suffix)
+
+    assert actual.shape == reference.shape
+    np.testing.assert_allclose(actual, reference, rtol=1e-6, atol=1e-8)
+
+
 def test_contracted_p_and_d_shells_against_pyscf() -> None:
     """Compare contracted Cartesian and spherical kinetic matrices against PySCF."""
     shells = Shells(

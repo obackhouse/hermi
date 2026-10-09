@@ -277,7 +277,7 @@ def _expansion_pair_coefficients_derivative_side(
 
     if side == "bra":
         return np.expand_dims(weights, axis=2) @ coefficients
-    return coefficients @ np.expand_dims(weights, axis=1).mT
+    return coefficients @ np.expand_dims(weights, axis=2).mT
 
 
 def expansion_pair_coefficients_derivative_bra(
