@@ -48,12 +48,7 @@ def _reduce_primitive_pair[S: tuple[int, ...]](
     starts_j = pair.basis.contracted_shell_starts(pair.shell_j.indices)
     lengths_i = np.diff(np.append(starts_i, len(pair.shell_i)))
     lengths_j = np.diff(np.append(starts_j, len(pair.shell_j)))
-    if (
-        lengths_i.size
-        and lengths_j.size
-        and np.all(lengths_i == lengths_i[0])
-        and np.all(lengths_j == lengths_j[0])
-    ):
+    if lengths_i.size and lengths_j.size and np.all(lengths_i == lengths_i[0]) and np.all(lengths_j == lengths_j[0]):
         expanded = expanded.reshape(
             *expanded.shape[:axis],
             len(starts_i),
