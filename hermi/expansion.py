@@ -88,7 +88,7 @@ def _weight_side(view: ShellView | ShellPairView, side: Literal["bra", "ket"]) -
     return "ket" if isinstance(view, ShellView) else side
 
 
-class ExpansionTree[V: (ShellView, ShellPairView)](ABC):
+class ExpansionTree[V: ShellView | ShellPairView](ABC):
     """Hermite expansion operator as a computational tree."""
 
     @property
@@ -199,7 +199,7 @@ class ExpansionTree[V: (ShellView, ShellPairView)](ABC):
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class Expansion[V: (ShellView, ShellPairView)](ExpansionTree[V]):
+class Expansion[V: ShellView | ShellPairView](ExpansionTree[V]):
     r"""Hermite expansion operator for a shell or shell pair.
 
     This class recursively computes either
@@ -225,7 +225,7 @@ class Expansion[V: (ShellView, ShellPairView)](ExpansionTree[V]):
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ExpansionDerivative[V: (ShellView, ShellPairView)](ExpansionTree[V]):
+class ExpansionDerivative[V: ShellView | ShellPairView](ExpansionTree[V]):
     """Lazy differentiation of a Hermite expansion."""
 
     source: ExpansionTree[V]
@@ -265,7 +265,7 @@ class ExpansionDerivative[V: (ShellView, ShellPairView)](ExpansionTree[V]):
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ExpansionCoordinateProduct[V: (ShellView, ShellPairView)](ExpansionTree[V]):
+class ExpansionCoordinateProduct[V: ShellView | ShellPairView](ExpansionTree[V]):
     """Lazy multiplication of a Hermite expansion by a coordinate."""
 
     source: ExpansionTree[V]
@@ -306,7 +306,7 @@ class ExpansionCoordinateProduct[V: (ShellView, ShellPairView)](ExpansionTree[V]
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ExpansionScaled[V: (ShellView, ShellPairView)](ExpansionTree[V]):
+class ExpansionScaled[V: ShellView | ShellPairView](ExpansionTree[V]):
     """Lazy scaling of a Hermite expansion."""
 
     source: ExpansionTree[V]
@@ -340,7 +340,7 @@ class ExpansionScaled[V: (ShellView, ShellPairView)](ExpansionTree[V]):
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ExpansionSum[V: (ShellView, ShellPairView)](ExpansionTree[V]):
+class ExpansionSum[V: ShellView | ShellPairView](ExpansionTree[V]):
     """Lazy sum of Hermite expansions."""
 
     children: tuple[ExpansionTree[V], ...]

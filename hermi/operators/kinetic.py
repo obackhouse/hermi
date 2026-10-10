@@ -13,7 +13,7 @@ from hermi.hermite import (
     hermite_integral_recursion_zero_order,
     hermite_operator_matrix_indices,
 )
-from hermi.operator import Operator, _get_expansion_matrix, check_views_rank
+from hermi.operator import Operator, check_views_rank
 from hermi.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.util import unreachable
 
@@ -148,7 +148,7 @@ class Kinetic(Operator):
     ) -> tuple[ExpansionMatrix, ExpansionMatrix]:
         r"""Get the Hermite expansion matrix for the shells for a (1, 1) operator."""
         pair = views[0].basis[views[0], views[1]]
-        return _get_expansion_matrix(pair.shell_i, **kwargs), _get_expansion_matrix(pair.shell_j, **kwargs)
+        return Expansion(pair.shell_i).compute(**kwargs), Expansion(pair.shell_j).compute(**kwargs)
 
     def get_expansion_matrices(
         self, views: tuple[View, View], **kwargs: Any

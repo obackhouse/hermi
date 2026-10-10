@@ -27,21 +27,6 @@ if TYPE_CHECKING:
 
 
 @overload
-def _get_expansion_matrix(view: None, **kwargs: Any) -> None: ...
-@overload
-def _get_expansion_matrix(view: ShellView | ShellPairView, **kwargs: Any) -> ExpansionMatrix: ...
-
-
-def _get_expansion_matrix(view: View, **kwargs: Any) -> ExpansionMatrix | None:
-    """Get the Hermite expansion matrix for a view."""
-    if isinstance(view, ShellView):
-        return Expansion(view).compute(**kwargs)
-    elif isinstance(view, ShellPairView):
-        return Expansion(view).compute(**kwargs)
-    return None
-
-
-@overload
 def check_view_rank(view: None, rank: Literal[0]) -> TypeIs[None]: ...
 @overload
 def check_view_rank(view: ShellView, rank: Literal[1]) -> TypeIs[ShellView]: ...
@@ -176,7 +161,9 @@ class Operator(ABC):
             ``n_primitive`` is the number of primitive Gaussians in the shell, ``n_hermite`` is the number of Hermite
             Gaussians in the shell, and ``n_cartesian`` is the number of Cartesian Gaussians in the shell.
         """
-        return (_get_expansion_matrix(views[0], **kwargs), _get_expansion_matrix(views[1], **kwargs))
+        expansion_a = Expansion(views[0]).compute(**kwargs) if views[0] is not None else None
+        expansion_b = Expansion(views[1]).compute(**kwargs) if views[1] is not None else None
+        return expansion_a, expansion_b
 
     @overload
     def contract(
