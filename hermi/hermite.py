@@ -390,6 +390,7 @@ def expansion_pair_coefficients_derivative(
     return result
 
 
+@lru_cache(maxsize=1024)
 def expansion_pair_matrix(
     pair: ShellPairView,
     *,
@@ -540,6 +541,7 @@ def expansion_coefficients(
     return coefficients
 
 
+@lru_cache(maxsize=1024)
 def expansion_matrix(
     shell: ShellView,
     *,

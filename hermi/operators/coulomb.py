@@ -57,17 +57,7 @@ class Coulomb(Operator):
         )
 
     def _get_operator_matrix_22(self, views: tuple[ShellPairView, ShellPairView]) -> OperatorMatrix:
-        r"""Compute the (2, 2) Coulomb operator matrix in the Hermite basis.
-
-        Args:
-            views: Views of the shells to compute the operator matrix for.
-
-        Returns:
-            Hermite operator matrix. Shape is ``(n_primitive_bra, n_primitive_ket, n_hermite_bra, n_hermite_ket)``,
-            where ``n_primitive_bra`` and ``n_primitive_ket`` are the number of primitive Gaussians in the bra and ket
-            shells, and ``n_hermite_bra`` and ``n_hermite_ket`` are the number of Hermite Gaussians in the bra and ket
-            shells.
-        """
+        r"""Compute the (2, 2) Coulomb operator matrix in the Hermite basis."""
         pair_ab, pair_cd = views
         max_order = pair_ab.angular_momentum + pair_cd.angular_momentum
         displacement = pair_ab.position.reshape(-1, 1, 3) - pair_cd.position.reshape(1, -1, 3)

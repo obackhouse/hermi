@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -13,11 +13,13 @@ from hermi.hermite import (
     hermite_integral_recursion_zero_order,
     hermite_operator_matrix_indices,
 )
-from hermi.operator import Operator, check_views_rank
+from hermi.operator import Operator, _get_expansion_matrix, check_views_rank
 from hermi.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.util import unreachable
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from hermi.basis import ShellPairView, ShellView
     from hermi.operator import ExpansionMatrix, OperatorMatrix, View
     from hermi.symmetry import Symmetry
@@ -57,17 +59,7 @@ class Kinetic(Operator):
         )
 
     def _get_operator_matrix_11(self, views: tuple[ShellView, ShellView]) -> OperatorMatrix:
-        r"""Compute the (1, 1) kinetic energy operator matrix in the Hermite basis.
-
-        Args:
-            views: Views of the shells to compute the operator matrix for.
-
-        Returns:
-            Hermite operator matrix. Shape is ``(n_primitive_bra, n_primitive_ket, n_hermite_bra, n_hermite_ket)``,
-            where ``n_primitive_bra`` and ``n_primitive_ket`` are the number of primitive Gaussians in the bra and ket
-            shells, and ``n_hermite_bra`` and ``n_hermite_ket`` are the number of Hermite Gaussians in the bra and ket
-            shells.
-        """
+        r"""Compute the (1, 1) kinetic energy operator matrix in the Hermite basis."""
         pair = views[0].basis[views[0], views[1]]
         max_order = pair.angular_momentum + 2
         displacement = pair.vector
@@ -108,14 +100,7 @@ class Kinetic(Operator):
         return operator
 
     def _get_operator_matrix_20(self, views: tuple[ShellPairView, None]) -> OperatorMatrix:
-        r"""Compute the (2, 0) kinetic energy operator matrix in the Hermite basis.
-
-        Args:
-            views: Views of the shell pair to compute the operator matrix for.
-
-        Returns:
-            Hermite operator matrix with shape ``(n_primitive_pairs, 1, n_hermite, 1)``.
-        """
+        r"""Compute the (2, 0) kinetic energy operator matrix in the Hermite basis."""
         pair = views[0]
         max_order = pair.angular_momentum + 2
         indices = hermite_indices(max_order)
@@ -125,55 +110,6 @@ class Kinetic(Operator):
         operator[:, :, 0] = -0.5 * np.expand_dims(np.pi / pair.exponent.ravel(), axis=(1, 2)) ** 1.5
 
         return operator
-
-    @overload
-    def get_expansion_matrices(self, views: tuple[None, None], spherical: bool = False) -> tuple[None, None]: ...
-    @overload
-    def get_expansion_matrices(
-        self, views: tuple[ShellView | ShellPairView, None], spherical: bool = False
-    ) -> tuple[ExpansionMatrix, None]: ...
-    @overload
-    def get_expansion_matrices(
-        self, views: tuple[None, ShellView | ShellPairView], spherical: bool = False
-    ) -> tuple[None, ExpansionMatrix]: ...
-    @overload
-    def get_expansion_matrices(
-        self, views: tuple[ShellView | ShellPairView, ShellView | ShellPairView], spherical: bool = False
-    ) -> tuple[ExpansionMatrix, ExpansionMatrix]: ...
-    @overload
-    def get_expansion_matrices(
-        self, views: tuple[View, View], spherical: bool = False
-    ) -> tuple[ExpansionMatrix | None, ExpansionMatrix | None]: ...
-
-    def get_expansion_matrices(
-        self, views: tuple[View, View], spherical: bool = False
-    ) -> tuple[ExpansionMatrix | None, ExpansionMatrix | None]:
-        r"""Get the Hermite expansion matrices for the kinetic operator.
-
-        Args:
-            views: Views of the shells to get the expansion matrices for.
-            spherical: Return real spherical instead of Cartesian integrals.
-
-        Returns:
-            Hermite expansion matrices for the bra and ket views.
-        """
-        if check_views_rank(views, (2, 0)):
-            pair = views[0]
-            max_order = pair.angular_momentum + 2
-            expansions = [
-                expansion_pair_matrix(
-                    pair,
-                    max_order=max_order,
-                    mode="derivative-ket",
-                    mode_axis=axis,
-                    derivative_order=2,
-                    spherical=spherical,
-                )
-                for axis in range(3)
-            ]
-            expansion = sum(expansions[1:], expansions[0])
-            return expansion, None
-        return super().get_expansion_matrices(views, spherical=spherical)
 
     def get_operator_matrix(self, views: tuple[View, View]) -> OperatorMatrix:
         r"""Compute the kinetic energy operator matrix in the Hermite basis.
@@ -191,4 +127,51 @@ class Kinetic(Operator):
             return self._get_operator_matrix_11(views)
         elif check_views_rank(views, (2, 0)):
             return self._get_operator_matrix_20(views)
+        return unreachable()
+
+    def _get_expansion_matrices_20(
+        self, views: tuple[ShellPairView, None], **kwargs: Any
+    ) -> tuple[ExpansionMatrix, None]:
+        r"""Get the Hermite expansion matrix for the shells for a (2, 0) operator."""
+        pair = views[0]
+        max_order = pair.angular_momentum + 2
+        expansions = [
+            expansion_pair_matrix(
+                pair,
+                max_order=max_order,
+                mode="derivative-ket",
+                mode_axis=axis,
+                derivative_order=2,
+                **kwargs,
+            )
+            for axis in range(3)
+        ]
+        expansion = sum(expansions[1:], expansions[0])
+        return expansion, None
+
+    def _get_expansion_matrices_11(
+        self, views: tuple[ShellView, ShellView], **kwargs: Any
+    ) -> tuple[ExpansionMatrix, ExpansionMatrix]:
+        r"""Get the Hermite expansion matrix for the shells for a (1, 1) operator."""
+        pair = views[0].basis[views[0], views[1]]
+        return _get_expansion_matrix(pair.shell_i, **kwargs), _get_expansion_matrix(pair.shell_j, **kwargs)
+
+    def get_expansion_matrices(
+        self, views: tuple[View, View], **kwargs: Any
+    ) -> tuple[ExpansionMatrix | None, ExpansionMatrix | None]:
+        r"""Get the Hermite expansion matrix for the shells.
+
+        Args:
+            views: Views of the shells to get the expansion matrix for.
+            kwargs: Additional keyword arguments to pass to the expansion matrix function.
+
+        Returns:
+            Hermite expansion matrices for the shells. Shape is ``(n_primitive, n_hermite, n_cartesian)``, where
+            ``n_primitive`` is the number of primitive Gaussians in the shell, ``n_hermite`` is the number of Hermite
+            Gaussians in the shell, and ``n_cartesian`` is the number of Cartesian Gaussians in the shell.
+        """
+        if check_views_rank(views, (2, 0)):
+            return self._get_expansion_matrices_20(views, **kwargs)
+        elif check_views_rank(views, (1, 1)):
+            return self._get_expansion_matrices_11(views, **kwargs)
         return unreachable()

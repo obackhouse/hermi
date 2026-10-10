@@ -13,6 +13,7 @@ from hermi.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.util import unreachable
 
 if TYPE_CHECKING:
+
     from hermi.basis import ShellPairView, ShellView
     from hermi.operator import OperatorMatrix, View
     from hermi.symmetry import Symmetry
@@ -52,17 +53,7 @@ class Overlap(Operator):
         )
 
     def _get_operator_matrix_20(self, views: tuple[ShellPairView, None]) -> OperatorMatrix:
-        r"""Compute the (2, 0) overlap operator matrix in the Hermite basis.
-
-        Args:
-            views: Views of the shells to compute the operator matrix for.
-
-        Returns:
-            Hermite operator matrix. Shape is ``(n_primitive_bra, n_primitive_ket, n_hermite_bra, n_hermite_ket)``,
-            where ``n_primitive_bra`` and ``n_primitive_ket`` are the number of primitive Gaussians in the bra and ket
-            shells, and ``n_hermite_bra`` and ``n_hermite_ket`` are the number of Hermite Gaussians in the bra and ket
-            shells.
-        """
+        r"""Compute the (2, 0) overlap operator matrix in the Hermite basis."""
         # TODO: implement rank-deficient contraction
         pair = views[0]
         max_order = pair.angular_momentum
@@ -77,17 +68,7 @@ class Overlap(Operator):
         return operator
 
     def _get_operator_matrix_11(self, views: tuple[ShellView, ShellView]) -> OperatorMatrix:
-        r"""Compute the (1, 1) overlap operator matrix in the Hermite basis.
-
-        Args:
-            views: Views of the shells to compute the operator matrix for.
-
-        Returns:
-            Hermite operator matrix. Shape is ``(n_primitive_bra, n_primitive_ket, n_hermite_bra, n_hermite_ket)``,
-            where ``n_primitive_bra`` and ``n_primitive_ket`` are the number of primitive Gaussians in the bra and ket
-            shells, and ``n_hermite_bra`` and ``n_hermite_ket`` are the number of Hermite Gaussians in the bra and ket
-            shells.
-        """
+        r"""Compute the (1, 1) overlap operator matrix in the Hermite basis."""
         pair = views[0].basis[views[0], views[1]]
         max_order = pair.angular_momentum
         displacement = pair.vector

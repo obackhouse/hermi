@@ -56,17 +56,7 @@ class Nuclear(Operator):
         )
 
     def _get_operator_matrix_20(self, views: tuple[ShellPairView, None]) -> OperatorMatrix:
-        r"""Compute the (2, 0) nuclear attraction operator matrix in the Hermite basis.
-
-        Args:
-            views: Views of the shells to compute the operator matrix for.
-
-        Returns:
-            Hermite operator matrix. Shape is ``(n_primitive_bra, n_primitive_ket, n_hermite_bra, n_hermite_ket)``,
-            where ``n_primitive_bra`` and ``n_primitive_ket`` are the number of primitive Gaussians in the bra and ket
-            shells, and ``n_hermite_bra`` and ``n_hermite_ket`` are the number of Hermite Gaussians in the bra and ket
-            shells.
-        """
+        r"""Compute the (2, 0) nuclear attraction operator matrix in the Hermite basis."""
         pair = views[0]
         max_order = pair.angular_momentum
         exponent = np.expand_dims(pair.exponent.ravel(), axis=-1)

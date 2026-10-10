@@ -10,7 +10,7 @@ import numpy as np
 from scipy.special import lpmv
 
 if TYPE_CHECKING:
-    from typing import Never
+    from typing import Any, Never
 
     from numpy import float64, int64
 
@@ -29,6 +29,23 @@ class DefaultHash:
 
     def __hash__(self) -> int:
         return object.__hash__(self)
+
+
+def update_if_missing(d: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    """Update a dictionary with new key-value pairs if the keys are not already present.
+
+    Args:
+        d: Dictionary to update.
+        kwargs: Key-value pairs to add to the dictionary.
+
+    Returns:
+        Updated dictionary with new key-value pairs added if the keys were not already present.
+    """
+    out = d.copy()
+    for key, value in kwargs.items():
+        if key not in out:
+            out[key] = value
+    return out
 
 
 def outer_powers(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import TYPE_CHECKING, overload
 
 from hermi.basis import ShellPairView, ShellView
@@ -28,18 +27,37 @@ if TYPE_CHECKING:
 
 
 @overload
-def _get_expansion_matrix(view: None, spherical: bool = False) -> None: ...
+def _get_expansion_matrix(view: None, **kwargs: Any) -> None: ...
 @overload
-def _get_expansion_matrix(view: ShellView | ShellPairView, spherical: bool = False) -> ExpansionMatrix: ...
+def _get_expansion_matrix(view: ShellView | ShellPairView, **kwargs: Any) -> ExpansionMatrix: ...
 
 
-def _get_expansion_matrix(view: View, spherical: bool = False) -> ExpansionMatrix | None:
+def _get_expansion_matrix(view: View, **kwargs: Any) -> ExpansionMatrix | None:
     """Get the Hermite expansion matrix for a view."""
     if isinstance(view, ShellView):
-        return expansion_matrix(view, spherical=spherical)
+        return expansion_matrix(view, **kwargs)
     elif isinstance(view, ShellPairView):
-        return expansion_pair_matrix(view, spherical=spherical)
+        return expansion_pair_matrix(view, **kwargs)
     return None
+
+
+@overload
+def check_view_rank(view: None, rank: Literal[0]) -> TypeIs[None]: ...
+@overload
+def check_view_rank(view: ShellView, rank: Literal[1]) -> TypeIs[ShellView]: ...
+@overload
+def check_view_rank(view: ShellPairView, rank: Literal[2]) -> TypeIs[ShellPairView]: ...
+
+
+def check_view_rank[N: int](view: View, rank: N) -> bool:
+    """Check that the view has the expected rank."""
+    if rank == 0:
+        return view is None
+    elif rank == 1:
+        return isinstance(view, ShellView)
+    elif rank == 2:
+        return isinstance(view, ShellPairView)
+    raise ValueError(f"invalid rank {rank}")
 
 
 @overload
@@ -144,101 +162,21 @@ class Operator(ABC):
         """
         pass
 
-    @overload
-    def get_expansion_matrix(self, view: None, spherical: bool = False) -> None: ...
-    @overload
-    def get_expansion_matrix(self, view: ShellView | ShellPairView, spherical: bool = False) -> ExpansionMatrix: ...
-
-    @lru_cache(maxsize=None)
-    def get_expansion_matrix(self, view: View, spherical: bool = False) -> ExpansionMatrix | None:
-        r"""Get the Hermite expansion matrix for a shell.
-
-        Args:
-            view: View of the shell to get the expansion matrix for.
-            spherical: Return real spherical instead of Cartesian integrals.
-
-        Returns:
-            Hermite expansion matrix for the shell. Shape is ``(n_primitive, n_hermite, n_cartesian)``, where
-            ``n_primitive`` is the number of primitive Gaussians in the shell, ``n_hermite`` is the number of Hermite
-            Gaussians in the shell, and ``n_cartesian`` is the number of Cartesian Gaussians in the shell.
-        """
-        return _get_expansion_matrix(view, spherical=spherical)
-
-    @overload
-    def get_expansion_matrix_bra(self, view: None, spherical: bool = False) -> None: ...
-    @overload
-    def get_expansion_matrix_bra(self, view: ShellView | ShellPairView, spherical: bool = False) -> ExpansionMatrix: ...
-
-    def get_expansion_matrix_bra(self, view: View, spherical: bool = False) -> ExpansionMatrix | None:
-        r"""Get the Hermite expansion matrix for the bra shell.
-
-        Args:
-            view: View of the bra shell to get the expansion matrix for.
-            spherical: Return real spherical instead of Cartesian integrals.
-
-        Returns:
-            Hermite expansion matrix for the bra shell. Shape is ``(n_primitive, n_hermite, n_cartesian)``, where
-            ``n_primitive`` is the number of primitive Gaussians in the shell, ``n_hermite`` is the number of Hermite
-            Gaussians in the shell, and ``n_cartesian`` is the number of Cartesian Gaussians in the shell.
-        """
-        return _get_expansion_matrix(view, spherical=spherical)
-
-    @overload
-    def get_expansion_matrix_ket(self, view: None, spherical: bool = False) -> None: ...
-    @overload
-    def get_expansion_matrix_ket(self, view: ShellView | ShellPairView, spherical: bool = False) -> ExpansionMatrix: ...
-
-    def get_expansion_matrix_ket(self, view: View, spherical: bool = False) -> ExpansionMatrix | None:
-        r"""Get the Hermite expansion matrix for the ket shell.
-
-        Args:
-            view: View of the ket shell to get the expansion matrix for.
-            spherical: Return real spherical instead of Cartesian integrals.
-
-        Returns:
-            Hermite expansion matrix for the ket shell. Shape is ``(n_primitive, n_hermite, n_cartesian)``, where
-            ``n_primitive`` is the number of primitive Gaussians in the shell, ``n_hermite`` is the number of Hermite
-            Gaussians in the shell, and ``n_cartesian`` is the number of Cartesian Gaussians in the shell.
-        """
-        return _get_expansion_matrix(view, spherical=spherical)
-
-    @overload
-    def get_expansion_matrices(self, views: tuple[None, None], spherical: bool = False) -> tuple[None, None]: ...
-    @overload
     def get_expansion_matrices(
-        self, views: tuple[ShellView | ShellPairView, None], spherical: bool = False
-    ) -> tuple[ExpansionMatrix, None]: ...
-    @overload
-    def get_expansion_matrices(
-        self, views: tuple[None, ShellView | ShellPairView], spherical: bool = False
-    ) -> tuple[None, ExpansionMatrix]: ...
-    @overload
-    def get_expansion_matrices(
-        self, views: tuple[ShellView | ShellPairView, ShellView | ShellPairView], spherical: bool = False
-    ) -> tuple[ExpansionMatrix, ExpansionMatrix]: ...
-    @overload
-    def get_expansion_matrices(
-        self, views: tuple[View, View], spherical: bool = False
-    ) -> tuple[ExpansionMatrix | None, ExpansionMatrix | None]: ...
-
-    def get_expansion_matrices(
-        self, views: tuple[View, View], spherical: bool = False
+        self, views: tuple[View, View], **kwargs: Any
     ) -> tuple[ExpansionMatrix | None, ExpansionMatrix | None]:
-        r"""Get the Hermite expansion matrices for the bra and ket shells.
+        r"""Get the Hermite expansion matrix for the shells.
 
         Args:
-            views: Views of the shells to get the expansion matrices for.
-            spherical: Return real spherical instead of Cartesian integrals.
+            views: Views of the shells to get the expansion matrix for.
+            kwargs: Additional keyword arguments to pass to the expansion matrix function.
 
         Returns:
-            Hermite expansion matrices for the bra and ket shells. Shape is ``(n_primitive, n_hermite, n_cartesian)``,
-            where ``n_primitive`` is the number of primitive Gaussians in the shell, ``n_hermite`` is the number of
-            Hermite Gaussians in the shell, and ``n_cartesian`` is the number of Cartesian Gaussians in the shell.
+            Hermite expansion matrices for the shells. Shape is ``(n_primitive, n_hermite, n_cartesian)``, where
+            ``n_primitive`` is the number of primitive Gaussians in the shell, ``n_hermite`` is the number of Hermite
+            Gaussians in the shell, and ``n_cartesian`` is the number of Cartesian Gaussians in the shell.
         """
-        return (
-            _get_expansion_matrix(views[0], spherical=spherical),
-            _get_expansion_matrix(views[1], spherical=spherical),
-        )
+        return (_get_expansion_matrix(views[0], **kwargs), _get_expansion_matrix(views[1], **kwargs))
 
     @overload
     def contract(

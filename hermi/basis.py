@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import TYPE_CHECKING, overload
 
 import basis_set_exchange as bse
@@ -376,6 +377,7 @@ class Basis(DefaultHash):
             assert isinstance(shell_pair, ShellPairView)
             yield from screening(shell_pair)
 
+    @lru_cache(maxsize=None)
     def ordered_by_angular_momentum(self, spherical: bool = False) -> tuple[Basis, array[tuple[int], int64]]:
         """Return a copy of the basis ordered by angular momentum.
 
@@ -385,6 +387,11 @@ class Basis(DefaultHash):
         Returns:
             A new ``Basis`` object with contracted shells ordered by angular momentum, and AO indices
             that restore the original basis order.
+
+        Note:
+            This method is cached on the parent ``Basis`` object, so repeated calls will return the
+            same object to admit caching of derived quantities. With the simple ``lru_cache``, this
+            does not support caching within nested calls.
         """
         first_indices = self.contracted_shell_starts(slice(None))
         shell_ids = self.shells.shell_indices[first_indices]
@@ -448,7 +455,7 @@ class Basis(DefaultHash):
         return self.num_primitive_shells
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, eq=False, slots=True)
 class ShellView:
     """View of a shell."""
 
@@ -509,6 +516,14 @@ class ShellView:
         stop = self.indices.stop or self.basis.num_primitive_shells
         return int(stop - start)
 
+    def __hash__(self) -> int:
+        return hash((self.basis, self.indices))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ShellView):
+            return NotImplemented
+        return self.basis is other.basis and self.indices == other.indices
+
 
 def _shell_slices(view: ShellView) -> list[slice]:
     """Return primitive slices for each contracted shell in a view."""
@@ -541,7 +556,7 @@ def _true_runs(mask: array[tuple[int], bool_]) -> list[tuple[int, int]]:
     return runs
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, eq=False, slots=True)
 class ShellPairView:
     """View of a shell pair."""
 
@@ -656,3 +671,11 @@ class ShellPairView:
         start_j = self.indices_j.start or 0
         stop_j = self.indices_j.stop or self.shell_pairs.position.shape[1]
         return int((stop_i - start_i) * (stop_j - start_j))
+
+    def __hash__(self) -> int:
+        return hash((self.shell_i, self.shell_j))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ShellPairView):
+            return NotImplemented
+        return self.shell_i == other.shell_i and self.shell_j == other.shell_j
