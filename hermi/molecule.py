@@ -13,6 +13,8 @@ from scipy import constants
 
 from hermi.util import DefaultHash
 
+ANGSTROM_TO_BOHR = 1e-10 / constants.value("Bohr radius")
+
 if TYPE_CHECKING:
     from typing import Any, Literal
 
@@ -74,6 +76,23 @@ class Molecule(DefaultHash):
             raise ValueError(f"coordinates must have shape (N, 3), but got {self.positions.shape}")
 
     @classmethod
+    def from_list(
+        cls,
+        elements: list[str] | list[Element],
+        positions: array[tuple[int, int], float64] | list[list[float]],
+        units: Literal["angstrom", "bohr"] = "angstrom",
+    ) -> Molecule:
+        """Create a molecule from a list of elements and positions."""
+        path = os.path.join(os.path.dirname(__file__), "periodic_table.json")
+        periodic_table = PeriodicTable.from_json(path)
+        if isinstance(elements[0], str):
+            elements = [periodic_table.find(symbol=symbol) for symbol in elements]
+        positions = np.array(positions, dtype=np.float64)
+        if units == "angstrom":
+            positions *= ANGSTROM_TO_BOHR
+        return cls(elements=elements, positions=positions)
+
+    @classmethod
     def from_xyz(self, content: list[str] | str, units: Literal["angstrom", "bohr"] = "angstrom") -> Molecule:
         """Load molecule from XYZ file."""
         path = os.path.join(os.path.dirname(__file__), "periodic_table.json")
@@ -89,7 +108,7 @@ class Molecule(DefaultHash):
             coordinates.append(tuple(map(float, parts[1:4])))
         positions: array[tuple[int, int], float64] = np.array(coordinates, dtype=np.float64)
         if units == "angstrom":
-            positions *= constants.value("Bohr radius") / constants.value("angstrom")
+            positions *= ANGSTROM_TO_BOHR
         return Molecule(elements=elements, positions=positions)
 
     @cached_property
