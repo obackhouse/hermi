@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from hermi._typing import array
     from hermi.basis import Basis
-    from hermi.operator import Operator
+    from hermi.operators.operator import Operator
     from hermi.symmetry import Symmetry
 
 

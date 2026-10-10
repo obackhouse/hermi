@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from hermi._typing import array
     from hermi.basis import ShellPairView, ShellView
     from hermi.expansion import ExpansionMatrix
-    from hermi.operator import OperatorMatrix
+    from hermi.operators.operator import OperatorMatrix
 
 
 def _reduce_primitive[S: tuple[int, ...]](values: array[S, float64], shell: ShellView, axis: int) -> array[S, float64]:

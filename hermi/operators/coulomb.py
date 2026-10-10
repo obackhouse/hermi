@@ -9,13 +9,13 @@ import numpy as np
 
 from hermi.boys import boys
 from hermi.hermite import hermite_indices, hermite_integral_recursion, hermite_operator_matrix_indices
-from hermi.operator import Operator, check_views_rank
+from hermi.operators.operator import Operator, check_views_rank
 from hermi.symmetry import SymmetryN4S1, SymmetryN4S8
 from hermi.util import outer_powers, unreachable
 
 if TYPE_CHECKING:
     from hermi.basis import ShellPairView
-    from hermi.operator import OperatorMatrix, View
+    from hermi.operators.operator import OperatorMatrix, View
     from hermi.symmetry import Symmetry
 
 
