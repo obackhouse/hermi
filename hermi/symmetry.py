@@ -389,6 +389,98 @@ class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
 
 
 @dataclass(frozen=True)
+class SymmetryN4S4(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]):
+    """Symmetry for a 4D array with S4 symmetry."""
+
+    def __post_init__(self) -> None:
+        if len(set(self.shape[:2])) != 1:
+            raise ValueError("shape must have equal dimensions at index 0, 1")
+        if len(set(self.shape[2:])) != 1:
+            raise ValueError("shape must have equal dimensions at index 2, 3")
+
+    @overload
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int, int], T],
+        indices: tuple[int, int, int, int],
+        value: T,
+    ) -> None: ...
+    @overload
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int, int], T],
+        indices: tuple[slice, slice, slice, slice],
+        value: array[tuple[int, int, int, int], T],
+    ) -> None: ...
+
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int, int], T],
+        indices: tuple[int, int, int, int] | tuple[slice, slice, slice, slice],
+        value: T | array[tuple[int, int, int, int], T],
+    ) -> None:
+        """Set an array value according to the symmetry.
+
+        Args:
+            array: Array to set values in.
+            indices: Indices to set values at.
+            value: Value to set.
+        """
+        i, j, k, l = indices
+        seen = set()
+        for indices_perm, perm in [
+            ((i, j, k, l), (0, 1, 2, 3)),
+            ((j, i, k, l), (1, 0, 2, 3)),
+            ((i, j, l, k), (0, 1, 3, 2)),
+            ((j, i, l, k), (1, 0, 3, 2)),
+        ]:
+            if indices_perm not in seen:
+                array[indices_perm] = np.transpose(value, perm)
+                seen.add(indices_perm)
+
+    def ravel_index(self, index: tuple[int, int, int, int]) -> int:
+        """Ravel an index according to the symmetry.
+
+        Args:
+            index: Index to ravel.
+
+        Returns:
+            Raveled index.
+        """
+        ij = _ravel_symmetric_indices(index[0], index[1])
+        kl = _ravel_symmetric_indices(index[2], index[3])
+        return ij * self.shape[2] * self.shape[3] + kl
+
+    def unravel_index(self, index: int) -> tuple[int, int, int, int]:
+        """Unravel an index according to the symmetry.
+
+        Args:
+            index: Index to unravel.
+
+        Returns:
+            Unraveled index.
+        """
+        ij, kl = divmod(index, self.shape[2] * self.shape[3])
+        i, j = _unravel_symmetric_indices(ij)
+        k, l = _unravel_symmetric_indices(kl)
+        return i, j, k, l
+
+    @property
+    def ravelled_size(self) -> int:
+        """Total size of the ravelled array."""
+        return _ravel_symmetric_indices(self.shape[0], 0) * _ravel_symmetric_indices(self.shape[2], 0)
+
+    def canonical_indices(self) -> Iterable[tuple[tuple[int, int, int, int], bool]]:
+        """Yield canonical indices for the symmetry.
+
+        Yields:
+            Canonical indices for the symmetry and whether their sign flips under the permutation.
+        """
+        for indices in itertools.product(itertools.combinations_with_replacement(range(self.shape[0]), 2), repeat=2):
+            yield indices[0] + indices[1], False
+
+
+@dataclass(frozen=True)
 class SymmetryN4S8(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]):
     """Symmetry for a 4D array with S8 symmetry."""
 
