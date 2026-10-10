@@ -28,24 +28,24 @@ class Overlap(Operator):
         \hat{O} = 1.
     """
 
-    def get_default_signature(self, split_basis: bool = False) -> tuple[int, int]:
+    @property
+    def default_signature(self) -> tuple[int, int]:
         r"""Default signature of the operator."""
-        return (1, 1) if split_basis else (2, 0)
+        return (2, 0)
 
-    def get_supported_signatures(self, split_basis: bool = False) -> tuple[tuple[int, int], ...]:
+    @property
+    def supported_signatures(self) -> tuple[tuple[int, int], ...]:
         r"""Supported signatures of the operator."""
-        return ((1, 1),) if split_basis else ((2, 0), (1, 1))
+        return ((2, 0), (1, 1))
 
-    def get_default_symmetry(self, split_basis: bool = False) -> type[Symmetry[tuple[int, int], tuple[slice, slice]]]:
+    @property
+    def default_symmetry(self) -> type[Symmetry[tuple[int, int], tuple[slice, slice]]]:
         r"""Default symmetry of the operator."""
-        return SymmetryN2S1 if split_basis else SymmetryN2S2
+        return SymmetryN2S2
 
-    def get_supported_symmetries(
-        self, split_basis: bool = False
-    ) -> tuple[type[Symmetry[tuple[int, int], tuple[slice, slice]]], ...]:
+    @property
+    def supported_symmetries(self) -> tuple[type[Symmetry[tuple[int, int], tuple[slice, slice]]], ...]:
         r"""Supported symmetries of the operator."""
-        if split_basis:
-            return (SymmetryN2S1,)
         return (
             SymmetryN2S1,
             SymmetryN2S2,

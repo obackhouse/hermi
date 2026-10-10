@@ -10,7 +10,7 @@ import numpy as np
 from hermi.boys import boys
 from hermi.hermite import hermite_indices, hermite_integral_recursion, hermite_operator_matrix_indices
 from hermi.operators.operator import Operator, check_views_rank
-from hermi.symmetry import SymmetryN4S1, SymmetryN4S4, SymmetryN4S8
+from hermi.symmetry import SymmetryN4S1, SymmetryN4S8
 from hermi.util import outer_powers, unreachable
 
 if TYPE_CHECKING:
@@ -29,29 +29,30 @@ class Coulomb(Operator):
         \hat{O} = \frac{1}{|r_1 - r_2|}.
     """
 
-    def get_default_signature(self, split_basis: bool = False) -> tuple[int, int]:
+    @property
+    def default_signature(self) -> tuple[int, int]:
         r"""Default signature of the operator."""
         return (2, 2)
 
-    def get_supported_signatures(self, split_basis: bool = False) -> tuple[tuple[int, int], ...]:
+    @property
+    def supported_signatures(self) -> tuple[tuple[int, int], ...]:
         r"""Supported signatures of the operator."""
         return ((2, 2),)
 
-    def get_default_symmetry(
-        self, split_basis: bool = False
+    @property
+    def default_symmetry(
+        self,
     ) -> type[Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]]:
         r"""Default symmetry of the operator."""
-        return SymmetryN4S4 if split_basis else SymmetryN4S8
+        return SymmetryN4S8
 
-    def get_supported_symmetries(
-        self, split_basis: bool = False
+    @property
+    def supported_symmetries(
+        self,
     ) -> tuple[type[Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]], ...]:
         r"""Supported symmetries of the operator."""
-        if split_basis:
-            return (SymmetryN4S1, SymmetryN4S4)
         return (
             SymmetryN4S1,
-            SymmetryN4S4,
             SymmetryN4S8,
         )
 

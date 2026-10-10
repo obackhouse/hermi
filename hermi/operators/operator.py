@@ -147,23 +147,27 @@ class Operator(ABC):
         """Get the total number of shells in the bra and ket views."""
         return (0 if views[0] is None else views[0].rank) + (0 if views[1] is None else views[1].rank)
 
+    @property
     @abstractmethod
-    def get_default_signature(self, split_basis: bool = False) -> tuple[int, int]:
+    def default_signature(self) -> tuple[int, int]:
         r"""Default signature of the operator."""
         pass
 
+    @property
     @abstractmethod
-    def get_supported_signatures(self, split_basis: bool = False) -> tuple[tuple[int, int], ...]:
+    def supported_signatures(self) -> tuple[tuple[int, int], ...]:
         r"""Supported signatures of the operator."""
         pass
 
+    @property
     @abstractmethod
-    def get_default_symmetry(self, split_basis: bool = False) -> type[Symmetry[Any, Any]]:
+    def default_symmetry(self) -> type[Symmetry[Any, Any]]:
         r"""Default symmetry of the operator."""
         pass
 
+    @property
     @abstractmethod
-    def get_supported_symmetries(self, split_basis: bool = False) -> tuple[type[Symmetry[Any, Any]], ...]:
+    def supported_symmetries(self) -> tuple[type[Symmetry[Any, Any]], ...]:
         r"""Supported symmetries of the operator."""
         pass
 
@@ -294,7 +298,7 @@ class Operator(ABC):
     @overload
     def collect(
         self,
-        basis: Basis | tuple[Basis, Basis],
+        basis: Basis,
         signature: tuple[Literal[0], Literal[1]] | tuple[Literal[1], Literal[0]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
@@ -303,7 +307,7 @@ class Operator(ABC):
     @overload
     def collect(
         self,
-        basis: Basis | tuple[Basis, Basis],
+        basis: Basis,
         signature: tuple[Literal[0], Literal[2]] | tuple[Literal[2], Literal[0]] | tuple[Literal[1], Literal[1]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
@@ -312,7 +316,7 @@ class Operator(ABC):
     @overload
     def collect(
         self,
-        basis: Basis | tuple[Basis, Basis],
+        basis: Basis,
         signature: tuple[Literal[1], Literal[2]] | tuple[Literal[2], Literal[1]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
@@ -321,7 +325,7 @@ class Operator(ABC):
     @overload
     def collect(
         self,
-        basis: Basis | tuple[Basis, Basis],
+        basis: Basis,
         signature: tuple[Literal[2], Literal[2]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
@@ -330,7 +334,7 @@ class Operator(ABC):
 
     def collect(
         self,
-        basis: Basis | tuple[Basis, Basis],
+        basis: Basis,
         signature: tuple[int, int] | None = None,
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
@@ -339,8 +343,7 @@ class Operator(ABC):
         r"""Collect contracted AO integrals for the operator.
 
         Args:
-            basis: Basis set to collect integrals for. Can be a pair of basis sets in which case the
-                first basis set is used for the bra and the second for the ket.
+            basis: Basis set to collect integrals for.
             signature: Signature of the operator to collect integrals for.
             symmetry_type: Symmetry helper class for the integral matrix.
             spherical: Return real spherical instead of Cartesian integrals.
@@ -348,15 +351,14 @@ class Operator(ABC):
         Returns:
             Contracted Cartesian or real spherical AO integrals.
         """
-        split_basis = isinstance(basis, tuple) and basis[0] is not basis[1]
         if signature is None:
-            signature = self.get_default_signature(split_basis=split_basis)
+            signature = self.default_signature
         if symmetry_type is None:
-            symmetry_type = self.get_default_symmetry(split_basis=split_basis)
+            symmetry_type = self.default_symmetry
 
-        if signature not in self.get_supported_signatures(split_basis=split_basis):
+        if signature not in self.supported_signatures:
             raise ValueError(f"operator signature {signature} not supported by operator {self.__class__.__name__}")
-        if symmetry_type not in self.get_supported_symmetries(split_basis=split_basis):
+        if symmetry_type not in self.supported_symmetries:
             raise ValueError(
                 f"operator symmetry {symmetry_type.__name__} not supported by operator {self.__class__.__name__}"
             )
@@ -405,54 +407,44 @@ class OperatorSum(Operator):
     def __post_init__(self) -> None:
         if len(self.operators) == 0:
             raise ValueError("operator sum must contain at least one operator")
-        if len(self.get_supported_signatures()) == 0:
+        if len(self.supported_signatures) == 0:
             raise ValueError("operator sum must contain operators with compatible signatures")
 
-    def get_default_signature(self, split_basis: bool = False) -> tuple[int, int]:
+    @property
+    def default_signature(self) -> tuple[int, int]:
         r"""Default signature of the operator."""
         default_signatures: dict[tuple[int, int], int] = {}
-        supported_signatures = self.get_supported_signatures(split_basis=split_basis)
+        supported_signatures = self.supported_signatures
         for operator in self.operators:
-            default_signature = operator.get_default_signature(split_basis=split_basis)
-            if default_signature not in supported_signatures:
+            if operator.default_signature not in supported_signatures:
                 continue
-            default_signatures[default_signature] = default_signatures.get(default_signature, 0) + 1
+            default_signatures[operator.default_signature] = default_signatures.get(operator.default_signature, 0) + 1
         if len(default_signatures) == 0:
-            if len(supported_signatures) == 0:
-                raise ValueError("operator sum must contain operators with compatible signatures")
             return supported_signatures[0]
         return max(default_signatures, key=default_signatures.__getitem__)
 
-    def get_supported_signatures(self, split_basis: bool = False) -> tuple[tuple[int, int], ...]:
+    @property
+    def supported_signatures(self) -> tuple[tuple[int, int], ...]:
         r"""Supported signatures of the operator."""
-        return tuple(
-            set.intersection(
-                *(set(operator.get_supported_signatures(split_basis=split_basis)) for operator in self.operators)
-            )
-        )
+        return tuple(set.intersection(*(set(operator.supported_signatures) for operator in self.operators)))
 
-    def get_default_symmetry(self, split_basis: bool = False) -> type[Symmetry[Any, Any]]:
+    @property
+    def default_symmetry(self) -> type[Symmetry[Any, Any]]:
         r"""Default symmetry of the operator."""
         default_symmetries: dict[type[Symmetry[Any, Any]], int] = {}
-        supported_symmetries = self.get_supported_symmetries(split_basis=split_basis)
+        supported_symmetries = self.supported_symmetries
         for operator in self.operators:
-            default_symmetry = operator.get_default_symmetry(split_basis=split_basis)
-            if default_symmetry not in supported_symmetries:
+            if operator.default_symmetry not in supported_symmetries:
                 continue
-            default_symmetries[default_symmetry] = default_symmetries.get(default_symmetry, 0) + 1
+            default_symmetries[operator.default_symmetry] = default_symmetries.get(operator.default_symmetry, 0) + 1
         if len(default_symmetries) == 0:
-            if len(supported_symmetries) == 0:
-                raise ValueError("operator sum must contain operators with compatible symmetries")
             return supported_symmetries[0]
         return max(default_symmetries, key=default_symmetries.__getitem__)
 
-    def get_supported_symmetries(self, split_basis: bool = False) -> tuple[type[Symmetry[Any, Any]], ...]:
+    @property
+    def supported_symmetries(self) -> tuple[type[Symmetry[Any, Any]], ...]:
         r"""Supported symmetries of the operator."""
-        return tuple(
-            set.intersection(
-                *(set(operator.get_supported_symmetries(split_basis=split_basis)) for operator in self.operators)
-            )
-        )
+        return tuple(set.intersection(*(set(operator.supported_symmetries) for operator in self.operators)))
 
     def get_operator_matrix(self, views: tuple[View, View]) -> OperatorMatrix:
         r"""Compute the operator matrix in the Hermite basis.
@@ -520,21 +512,25 @@ class OperatorScaled(Operator):
     operator: Operator
     scale: float
 
-    def get_default_signature(self, split_basis: bool = False) -> tuple[int, int]:
+    @property
+    def default_signature(self) -> tuple[int, int]:
         r"""Default signature of the operator."""
-        return self.operator.get_default_signature(split_basis=split_basis)
+        return self.operator.default_signature
 
-    def get_supported_signatures(self, split_basis: bool = False) -> tuple[tuple[int, int], ...]:
+    @property
+    def supported_signatures(self) -> tuple[tuple[int, int], ...]:
         r"""Supported signatures of the operator."""
-        return self.operator.get_supported_signatures(split_basis=split_basis)
+        return self.operator.supported_signatures
 
-    def get_default_symmetry(self, split_basis: bool = False) -> type[Symmetry[Any, Any]]:
+    @property
+    def default_symmetry(self) -> type[Symmetry[Any, Any]]:
         r"""Default symmetry of the operator."""
-        return self.operator.get_default_symmetry(split_basis=split_basis)
+        return self.operator.default_symmetry
 
-    def get_supported_symmetries(self, split_basis: bool = False) -> tuple[type[Symmetry[Any, Any]], ...]:
+    @property
+    def supported_symmetries(self) -> tuple[type[Symmetry[Any, Any]], ...]:
         r"""Supported symmetries of the operator."""
-        return self.operator.get_supported_symmetries(split_basis=split_basis)
+        return self.operator.supported_symmetries
 
     def get_operator_matrix(self, views: tuple[View, View]) -> OperatorMatrix:
         r"""Compute the operator matrix in the Hermite basis.
