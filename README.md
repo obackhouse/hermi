@@ -1,6 +1,6 @@
 # hermi
 
-The `hermi` package implements various integrals over atom-centred Gaussian basis functions for use in quantum chemistry.
+The `hermi` package implements integrals over atom-centred Gaussian basis functions for use in quantum chemistry.
 It implements a generalised McMurchie--Davidson algorithm which targets matrix operations in order to effectively vectorise the workload via NumPy calls.
 This permits efficient integral generation without any custom compiled code.
 
