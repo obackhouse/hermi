@@ -6,32 +6,28 @@ import numpy as np
 from scipy.special import erf
 
 from hermi.boys import boys
-from hermi.hermite import expansion_pair_coefficients, expansion_pair_matrix
+from hermi.expansion import Expansion
 
 
-def test_expansion_coefficients_for_p_s_pair(basis_factory) -> None:
-    """Check the base value and first p-shell recurrence values."""
+def test_expansion_for_p_s_pair(basis_factory) -> None:
+    """Check the Cartesian-to-Hermite expansion for a p-s pair."""
     basis = basis_factory([[0, 0, 0], [2, 0, 0]], [1, 2], [1, 0])
     pair = basis[0:1, 1:2]
-    coefficients = expansion_pair_coefficients(pair, axis=0)
-    attenuation = np.exp(-8 / 3)
-
-    assert coefficients.shape == (1, 1, 2, 2, 1)
-    np.testing.assert_allclose(coefficients[0, 0, 0, 0, 0], attenuation)
-    np.testing.assert_allclose(coefficients[0, 0, 0, 1, 0], 4 / 3 * attenuation)
-    np.testing.assert_allclose(coefficients[0, 0, 1, 1, 0], attenuation / 6)
-
-
-def test_expansion_matrix_for_p_s_pair(basis_factory) -> None:
-    """Check the Cartesian-to-Hermite gather for a p-s pair."""
-    basis = basis_factory([[0, 0, 0], [2, 0, 0]], [1, 2], [1, 0])
-    pair = basis[0:1, 1:2]
-    matrix = expansion_pair_matrix(pair)
+    matrix = Expansion(pair).compute()
     attenuation = np.exp(-8 / 3)
 
     assert matrix.shape == (1, 3, 4)
     np.testing.assert_allclose(matrix[0, 0, 0], 4 / 3 * attenuation)
     np.testing.assert_allclose(matrix[0, 0, 3], attenuation / 6)
+
+
+def test_expansion_derivatives_on_multiple_axes(basis_factory) -> None:
+    """Include each axis shift when inferring the maximum Hermite order."""
+    basis = basis_factory([[0, 0, 0]], [1], [0])
+    shell = basis[0:1]
+    expansion = Expansion(shell).differentiate(0).differentiate(1).compute()
+
+    assert expansion.shape == (1, 1, 10)
 
 
 def test_boys_values_at_zero_and_positive_argument() -> None:

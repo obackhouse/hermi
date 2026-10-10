@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from hermi.expansion import Expansion
 from hermi.hermite import (
-    expansion_pair_matrix,
     hermite_indices,
     hermite_integral_recursion_zero_order,
     hermite_operator_matrix_indices,
@@ -21,7 +21,8 @@ if TYPE_CHECKING:
     from typing import Any
 
     from hermi.basis import ShellPairView, ShellView
-    from hermi.operator import ExpansionMatrix, OperatorMatrix, View
+    from hermi.expansion import ExpansionMatrix
+    from hermi.operator import OperatorMatrix, View
     from hermi.symmetry import Symmetry
 
 
@@ -134,20 +135,13 @@ class Kinetic(Operator):
     ) -> tuple[ExpansionMatrix, None]:
         r"""Get the Hermite expansion matrix for the shells for a (2, 0) operator."""
         pair = views[0]
-        max_order = pair.angular_momentum + 2
-        expansions = [
-            expansion_pair_matrix(
-                pair,
-                max_order=max_order,
-                mode="derivative-ket",
-                mode_axis=axis,
-                derivative_order=2,
-                **kwargs,
-            )
-            for axis in range(3)
+        expansion = Expansion(pair)
+        differentiated = [
+            expansion.differentiate(axis, side="ket").differentiate(axis, side="ket") for axis in range(3)
         ]
-        expansion = sum(expansions[1:], expansions[0])
-        return expansion, None
+        summed = differentiated[0] + differentiated[1] + differentiated[2]
+        expansion_matrix = summed.compute(**kwargs)
+        return expansion_matrix, None
 
     def _get_expansion_matrices_11(
         self, views: tuple[ShellView, ShellView], **kwargs: Any

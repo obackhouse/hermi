@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from hermi.hermite import expansion_matrix, expansion_pair_matrix
+from hermi.expansion import Expansion
 from hermi.util import num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 
     from hermi._typing import array
     from hermi.basis import ShellPairView, ShellView
-    from hermi.operator import ExpansionMatrix, OperatorMatrix
+    from hermi.expansion import ExpansionMatrix
+    from hermi.operator import OperatorMatrix
 
 
 def _reduce_primitive[S: tuple[int, ...]](values: array[S, float64], shell: ShellView, axis: int) -> array[S, float64]:
@@ -105,9 +106,9 @@ def contract_operator_11(
         Contracted Cartesian or real spherical :math:`(a|\hat{O}|b)` with shape ``(ai, bj)``.
     """
     if expansion_a is None:
-        expansion_a = expansion_matrix(shell_a, spherical=spherical)
+        expansion_a = Expansion(shell_a).compute(spherical=spherical)
     if expansion_b is None:
-        expansion_b = expansion_matrix(shell_b, spherical=spherical)
+        expansion_b = Expansion(shell_b).compute(spherical=spherical)
     coefficients = np.multiply.outer(shell_a.coefficient, shell_b.coefficient)
 
     # Align dimensions
@@ -163,9 +164,9 @@ def contract_operator_22(
         Contracted Cartesian or real spherical :math:`(ab|\hat{O}|cd)` integral block with shape ``(ai, bj, ck, dl)``.
     """
     if expansion_ab is None:
-        expansion_ab = expansion_pair_matrix(pair_ab, spherical=spherical)
+        expansion_ab = Expansion(pair_ab).compute(spherical=spherical)
     if expansion_cd is None:
-        expansion_cd = expansion_pair_matrix(pair_cd, spherical=spherical)
+        expansion_cd = Expansion(pair_cd).compute(spherical=spherical)
     coefficients = np.multiply.outer(pair_ab.coefficient.ravel(), pair_cd.coefficient.ravel())
 
     # Align dimensions
@@ -223,7 +224,7 @@ def contract_operator_20(
         Contracted Cartesian or real spherical :math:`(ab|\hat{O})` integral block with shape ``(ai, bj)``.
     """
     if expansion_ab is None:
-        expansion_ab = expansion_pair_matrix(pair_ab, spherical=spherical)
+        expansion_ab = Expansion(pair_ab).compute(spherical=spherical)
     coefficients = pair_ab.coefficient.ravel()
 
     # Align dimensions

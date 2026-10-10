@@ -13,7 +13,6 @@ from hermi.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.util import unreachable
 
 if TYPE_CHECKING:
-
     from hermi.basis import ShellPairView, ShellView
     from hermi.operator import OperatorMatrix, View
     from hermi.symmetry import Symmetry

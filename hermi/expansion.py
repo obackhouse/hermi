@@ -35,9 +35,10 @@ def _identity_weights(shell: ShellView) -> WeightArray:
 def _differentiate_weights(weights: WeightArray, shell: ShellView) -> WeightArray:
     """Return weights after differentiating a Gaussian polynomial."""
     updated = np.zeros((*weights.shape[:-1], weights.shape[-1] + 1))
-    powers = np.arange(weights.shape[-1])
     factor = -2.0 * np.expand_dims(shell.exponent, axis=(-1, -2))
-    updated[..., :-1] += weights[..., 1:] * powers
+    if weights.shape[-1] > 1:
+        powers = np.arange(1, weights.shape[-1])
+        updated[..., :-2] += weights[..., 1:] * powers
     updated[..., 1:] += weights * factor
     return updated
 
@@ -65,10 +66,10 @@ def _weight_shift(weights: WeightArray | None) -> int:
 
 def _plans_max_order(view: ShellView | ShellPairView, plans: tuple[WeightMap, ...]) -> int:
     """Return the maximum Hermite order required by a set of weight plans."""
-    shifts = [
-        _weight_shift(weights.get((side, axis))) for weights in plans for side in ("bra", "ket") for axis in range(3)
-    ]
-    return view.angular_momentum + max(shifts)
+    shifts = (
+        sum(_weight_shift(plan.get((side, axis))) for side in ("bra", "ket") for axis in range(3)) for plan in plans
+    )
+    return view.angular_momentum + max(shifts, default=0)
 
 
 def _shell_for_side(view: ShellView | ShellPairView, side: Literal["bra", "ket"]) -> ShellView:
@@ -87,8 +88,8 @@ def _weight_side(view: ShellView | ShellPairView, side: Literal["bra", "ket"]) -
     return "ket" if isinstance(view, ShellView) else side
 
 
-class HermiteExpansion[V: (ShellView, ShellPairView)](ABC):
-    """Hermite expansion operator."""
+class ExpansionTree[V: (ShellView, ShellPairView)](ABC):
+    """Hermite expansion operator as a computational tree."""
 
     @property
     @abstractmethod
@@ -166,8 +167,8 @@ class HermiteExpansion[V: (ShellView, ShellPairView)](ABC):
             return _compute_shell(self.view, plans, max_order, spherical)
         return _compute_shell_pair(self.view, plans, max_order, spherical)
 
-    def __add__(self, other: object) -> HermiteExpansion[V]:
-        if not isinstance(other, HermiteExpansion):
+    def __add__(self, other: object) -> ExpansionTree[V]:
+        if not isinstance(other, ExpansionTree):
             return NotImplemented
         if type(self.view) is not type(other.view) or self.view != other.view:
             return NotImplemented
@@ -175,7 +176,7 @@ class HermiteExpansion[V: (ShellView, ShellPairView)](ABC):
         right = other.children if isinstance(other, ExpansionSum) else (other,)
         return ExpansionSum[V](left + right)
 
-    def __radd__(self, other: object) -> HermiteExpansion[V]:
+    def __radd__(self, other: object) -> ExpansionTree[V]:
         if isinstance(other, int) and other == 0:
             return self
         return self.__add__(other)
@@ -192,40 +193,42 @@ class HermiteExpansion[V: (ShellView, ShellPairView)](ABC):
         return hash((self.__class__, self.view))
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, HermiteExpansion):
+        if not isinstance(other, ExpansionTree):
             return NotImplemented
         return type(self.view) is type(other.view) and self.view == other.view
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ShellExpansion(HermiteExpansion[ShellView]):
-    """Hermite expansion recipe for a single shell."""
+class Expansion[V: (ShellView, ShellPairView)](ExpansionTree[V]):
+    r"""Hermite expansion operator for a shell or shell pair.
 
-    shell: ShellView
+    This class recursively computes either
+
+    .. math::
+        E_t^i = \frac{1}{2\alpha} E_{t-1}^{i-1} + t E_{t-1}^{i+1},
+
+    or
+
+    .. math::
+        E_t^{ij} = \frac{1}{2\alpha} E_{t-1}^{i-1,j} + t E_{t-1}^{i+1,j} + \frac{1}{2\alpha} E_{t-1}^{i,j-1}
+            + t E_{t-1}^{i,j+1},
+
+    depending on whether the expansion is for a single shell or a shell pair.
+    """
+
+    shell: V
 
     @property
-    def view(self) -> ShellView:
+    def view(self) -> V:
         """Shell view used by the expansion."""
         return self.shell
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ShellPairExpansion(HermiteExpansion[ShellPairView]):
-    """Hermite expansion recipe for a shell pair."""
-
-    pair: ShellPairView
-
-    @property
-    def view(self) -> ShellPairView:
-        """Shell-pair view used by the expansion."""
-        return self.pair
-
-
-@dataclass(frozen=True, eq=True, slots=True)
-class ExpansionDerivative[V: (ShellView, ShellPairView)](HermiteExpansion[V]):
+class ExpansionDerivative[V: (ShellView, ShellPairView)](ExpansionTree[V]):
     """Lazy differentiation of a Hermite expansion."""
 
-    source: HermiteExpansion[V]
+    source: ExpansionTree[V]
     axis: int
     side: Literal["bra", "ket"] = "ket"
 
@@ -262,10 +265,10 @@ class ExpansionDerivative[V: (ShellView, ShellPairView)](HermiteExpansion[V]):
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ExpansionCoordinateProduct[V: (ShellView, ShellPairView)](HermiteExpansion[V]):
+class ExpansionCoordinateProduct[V: (ShellView, ShellPairView)](ExpansionTree[V]):
     """Lazy multiplication of a Hermite expansion by a coordinate."""
 
-    source: HermiteExpansion[V]
+    source: ExpansionTree[V]
     axis: int
     origin: float = 0.0
     side: Literal["bra", "ket"] = "ket"
@@ -303,10 +306,10 @@ class ExpansionCoordinateProduct[V: (ShellView, ShellPairView)](HermiteExpansion
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ExpansionScaled[V: (ShellView, ShellPairView)](HermiteExpansion[V]):
+class ExpansionScaled[V: (ShellView, ShellPairView)](ExpansionTree[V]):
     """Lazy scaling of a Hermite expansion."""
 
-    source: HermiteExpansion[V]
+    source: ExpansionTree[V]
     factor: float
 
     @property
@@ -337,10 +340,10 @@ class ExpansionScaled[V: (ShellView, ShellPairView)](HermiteExpansion[V]):
 
 
 @dataclass(frozen=True, eq=True, slots=True)
-class ExpansionSum[V: (ShellView, ShellPairView)](HermiteExpansion[V]):
+class ExpansionSum[V: (ShellView, ShellPairView)](ExpansionTree[V]):
     """Lazy sum of Hermite expansions."""
 
-    children: tuple[HermiteExpansion[V], ...]
+    children: tuple[ExpansionTree[V], ...]
 
     def __post_init__(self) -> None:
         if not self.children:
@@ -533,13 +536,16 @@ def _compute_shell(
         coefficients += term_coefficients
 
     # Apply Cartesian normalization factors
-    coefficients *= cartesian_normalization(angular_momentum)
+    coefficients *= cartesian_normalization(angular_momentum)  # a t i, i -> a t i
 
     if spherical:
         # Transform the Cartesian coefficients to real spherical coefficients
-        coefficients = coefficients @ cartesian_to_spherical(angular_momentum)
+        coefficients = coefficients @ cartesian_to_spherical(angular_momentum)  # a t i, i p -> a t p
 
-    return coefficients.mT
+    # Reorder axes
+    coefficients = coefficients.mT  # a t i -> a i t
+
+    return coefficients
 
 
 def _compute_shell_pair(
@@ -576,9 +582,9 @@ def _compute_shell_pair(
 
             table = np.take(tables[axis, shift_i, shift_j], indices[axis], axis=2)
             if weights_i is not None:
-                table = weights_i[:, None, None, :, :] @ table
+                table = np.expand_dims(weights_i, axis=(1, 2)) @ table
             if weights_j is not None:
-                table = table @ weights_j[None, :, None, :, :].mT
+                table = table @ np.expand_dims(weights_j, axis=(0, 2)).mT
             table = np.take(table, cartesian_i[:, axis], axis=3)
             table = np.take(table, cartesian_j[:, axis], axis=4)
             term_coefficients *= table.reshape(coefficients.shape)
@@ -588,7 +594,7 @@ def _compute_shell_pair(
     normalization = np.multiply.outer(
         cartesian_normalization(angular_momentum_i), cartesian_normalization(angular_momentum_j)
     ).ravel()
-    coefficients *= normalization
+    coefficients *= normalization  # ab t ij, ij -> ab t ij
 
     if spherical:
         # Transform the Cartesian coefficients to real spherical coefficients
@@ -597,6 +603,8 @@ def _compute_shell_pair(
             cartesian_to_spherical(angular_momentum_j),
         )
         transform = transform.transpose(0, 2, 1, 3).reshape(len(cartesian_i) * len(cartesian_j), -1)
-        coefficients = coefficients @ transform
+        coefficients = coefficients @ transform  # ab t ij, ij pq -> ab t pq
 
-    return coefficients.mT
+    coefficients = coefficients.mT  # ab t ij -> ab ij t
+
+    return coefficients

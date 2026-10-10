@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, overload
 from hermi.basis import ShellPairView, ShellView
 from hermi.collect import collect_integral_11, collect_integral_20, collect_integral_22
 from hermi.contract import contract_operator_11, contract_operator_20, contract_operator_22
-from hermi.hermite import expansion_matrix, expansion_pair_matrix
+from hermi.expansion import Expansion
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -19,10 +19,10 @@ if TYPE_CHECKING:
 
     from hermi._typing import array
     from hermi.basis import Basis
+    from hermi.expansion import ExpansionMatrix
     from hermi.symmetry import Symmetry
 
     type OperatorMatrix = array[tuple[int, int, int, int], float64] | array[tuple[int, int, int, int, int], float64]
-    type ExpansionMatrix = array[tuple[int, int, int], float64] | array[tuple[int, int, int, int], float64]
     type View = None | ShellView | ShellPairView
 
 
@@ -35,9 +35,9 @@ def _get_expansion_matrix(view: ShellView | ShellPairView, **kwargs: Any) -> Exp
 def _get_expansion_matrix(view: View, **kwargs: Any) -> ExpansionMatrix | None:
     """Get the Hermite expansion matrix for a view."""
     if isinstance(view, ShellView):
-        return expansion_matrix(view, **kwargs)
+        return Expansion(view).compute(**kwargs)
     elif isinstance(view, ShellPairView):
-        return expansion_pair_matrix(view, **kwargs)
+        return Expansion(view).compute(**kwargs)
     return None
 
 
