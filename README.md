@@ -19,6 +19,34 @@ git clone https://github.com/obackhouse/hermi.git
 cd hermi && pip install .
 ```
 
+## Usage
+
+Helper classes for molecules and basis sets are implemented:
+
+```python
+from hermi import Molecule, Basis
+molecule = Molecule.from_list(["Li", "H"], [[0.0, 0.0, 0.0], [0.0, 0.0, 1.64]])
+basis = Basis.from_molecule(molecule, "6-31g")
+```
+
+The automatic basis construction uses the `basis-set-exchange` library.
+Operators can then be constructed and evaluated over the basis set:
+
+```python
+from hermi import Overlap
+overlap = Overlap()
+matrix = overlap.collect(basis)
+```
+
+Operators are also composable; along with lazy evaluation and caching,
+this can afford optimisations when computing molecular integrals summed over a number of operators:
+
+```python
+from hermi import Kinetic, Nuclear
+core_hamiltonian = Kinetic() + Nuclear(molecule)
+matrix = core_hamiltonian.collect(basis)
+```
+
 ## Development
 
 We recommend `uv` for development, install development dependencies and run the test suite with:
@@ -36,4 +64,4 @@ This work is based on several papers:
 first, the [original paper of McMurchie and Davidson](https://doi.org/10.1016/0021-9991(78)90092-X),
 and more specifically,
 the modern implementations detailed in papers [by Neese](https://doi.org/10.1002/jcc.26942)
-and [by Fermann and Valeev](https://arxiv.org/abs/2506.12501).
+and [by Asadchev and Valeev](https://arxiv.org/abs/2506.12501).
