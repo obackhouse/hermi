@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from hermi.symmetry import Symmetry
 
 
-@dataclass
+@dataclass(frozen=True)
 class Nuclear(Operator):
     r"""Nuclear attraction operator.
 

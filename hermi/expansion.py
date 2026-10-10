@@ -226,7 +226,24 @@ class Expansion[V: ShellView | ShellPairView](ExpansionTree[V]):
 
 @dataclass(frozen=True, eq=True, slots=True)
 class ExpansionDerivative[V: ShellView | ShellPairView](ExpansionTree[V]):
-    """Lazy differentiation of a Hermite expansion."""
+    r"""Differentiated Hermite expansion operator for a shell or shell pair.
+
+    This class computes either
+
+    .. math::
+        \frac{\partial E_t^i}{\partial x} = i E_t^{i-1} - 2\alpha E_t^{i+1},
+
+    or
+
+    .. math::
+        \frac{\partial E_t^{ij}}{\partial x} =
+        \begin{cases}
+            i E_t^{i-1,j} - 2\alpha E_t^{i+1,j}, & \text{side = bra}, \\
+            j E_t^{i,j-1} - 2\beta E_t^{i,j+1}, & \text{side = ket},
+        \end{cases}
+
+    For a shell pair, ``side`` selects the differentiated shell.
+    """
 
     source: ExpansionTree[V]
     axis: int
@@ -266,7 +283,24 @@ class ExpansionDerivative[V: ShellView | ShellPairView](ExpansionTree[V]):
 
 @dataclass(frozen=True, eq=True, slots=True)
 class ExpansionCoordinateProduct[V: ShellView | ShellPairView](ExpansionTree[V]):
-    """Lazy multiplication of a Hermite expansion by a coordinate."""
+    r"""Hermite expansion operator multiplied by a Cartesian coordinate for a shell or shell pair.
+
+    This class computes either
+
+    .. math::
+        (x - x_0) E_t^i = (A - x_0) E_t^i + E_t^{i+1},
+
+    or
+
+    .. math::
+        (x - x_0) E_t^{ij} =
+        \begin{cases}
+            (A - x_0) E_t^{ij} + E_t^{i+1,j}, & \text{side = bra}, \\
+            (B - x_0) E_t^{ij} + E_t^{i,j+1}, & \text{side = ket},
+        \end{cases}
+
+    For a shell pair, ``side`` selects the multiplied shell.
+    """
 
     source: ExpansionTree[V]
     axis: int
@@ -307,7 +341,7 @@ class ExpansionCoordinateProduct[V: ShellView | ShellPairView](ExpansionTree[V])
 
 @dataclass(frozen=True, eq=True, slots=True)
 class ExpansionScaled[V: ShellView | ShellPairView](ExpansionTree[V]):
-    """Lazy scaling of a Hermite expansion."""
+    """Scaled Hermite expansion operator for a shell or shell pair."""
 
     source: ExpansionTree[V]
     factor: float
@@ -341,7 +375,7 @@ class ExpansionScaled[V: ShellView | ShellPairView](ExpansionTree[V]):
 
 @dataclass(frozen=True, eq=True, slots=True)
 class ExpansionSum[V: ShellView | ShellPairView](ExpansionTree[V]):
-    """Lazy sum of Hermite expansions."""
+    """Sum of Hermite expansion operators for a shell or shell pair."""
 
     children: tuple[ExpansionTree[V], ...]
 

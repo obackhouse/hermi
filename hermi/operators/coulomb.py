@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from hermi.symmetry import Symmetry
 
 
-@dataclass
+@dataclass(frozen=True)
 class Coulomb(Operator):
     r"""Coulomb operator.
 

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from hermi.symmetry import Symmetry
 
 
-@dataclass
+@dataclass(frozen=True)
 class Kinetic(Operator):
     r"""Kinetic energy operator.
 
