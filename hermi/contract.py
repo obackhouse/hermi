@@ -229,7 +229,7 @@ def contract_operator_20(
 
     # Align dimensions
     coefficients = np.expand_dims(coefficients, axis=(0, 2, 3, 4))  # ab -> 1 ab 1 1 1
-    expansion_ab = np.expand_dims(expansion_ab, axis=1 if expansion_ab.ndim == 4 else (0, 2))  # ab ij p -> n ab 1 ij p
+    expansion_ab = np.expand_dims(expansion_ab, axis=2 if expansion_ab.ndim == 4 else (0, 2))  # ab ij p -> n ab 1 ij p
 
     # Apply the contraction coefficients
     operator = operator * coefficients  # n ab 1 p 1, n ab 1 1 1 -> n ab 1 p 1
