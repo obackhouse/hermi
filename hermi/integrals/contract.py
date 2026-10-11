@@ -105,8 +105,8 @@ def contract_operator_10(
     expansion_a: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int], float64]: ...
+    batch_dim: Literal[True] = True,
+) -> array[tuple[int, int], float64]: ...
 @overload
 def contract_operator_10(
     operator: OperatorMatrix,
@@ -114,8 +114,8 @@ def contract_operator_10(
     expansion_a: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int], float64]: ...
+    batch_dim: bool = False,
+) -> array[tuple[int], float64]: ...
 
 
 def contract_operator_10(
@@ -177,8 +177,8 @@ def contract_operator_11(
     expansion_b: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int, int], float64]: ...
+    batch_dim: Literal[True] = True,
+) -> array[tuple[int, int, int], float64]: ...
 @overload
 def contract_operator_11(
     operator: OperatorMatrix,
@@ -188,8 +188,8 @@ def contract_operator_11(
     expansion_b: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int, int], float64]: ...
+    batch_dim: bool = False,
+) -> array[tuple[int, int], float64]: ...
 
 
 def contract_operator_11(
@@ -264,8 +264,8 @@ def contract_operator_22(
     expansion_cd: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int, int, int, int], float64]: ...
+    batch_dim: Literal[True] = True,
+) -> array[tuple[int, int, int, int, int], float64]: ...
 @overload
 def contract_operator_22(
     operator: OperatorMatrix,
@@ -275,8 +275,8 @@ def contract_operator_22(
     expansion_cd: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int, int, int, int], float64]: ...
+    batch_dim: bool = False,
+) -> array[tuple[int, int, int, int], float64]: ...
 
 
 def contract_operator_22(
@@ -357,8 +357,8 @@ def contract_operator_12(
     expansion_bc: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int, int, int], float64]: ...
+    batch_dim: Literal[True] = True,
+) -> array[tuple[int, int, int, int], float64]: ...
 @overload
 def contract_operator_12(
     operator: OperatorMatrix,
@@ -368,8 +368,8 @@ def contract_operator_12(
     expansion_bc: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int, int, int], float64]: ...
+    batch_dim: bool = False,
+) -> array[tuple[int, int, int], float64]: ...
 
 
 def contract_operator_12(
@@ -443,8 +443,8 @@ def contract_operator_20(
     expansion_ab: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int, int], float64]: ...
+    batch_dim: Literal[True] = True,
+) -> array[tuple[int, int, int], float64]: ...
 @overload
 def contract_operator_20(
     operator: OperatorMatrix,
@@ -452,8 +452,8 @@ def contract_operator_20(
     expansion_ab: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int, int], float64]: ...
+    batch_dim: bool = False,
+) -> array[tuple[int, int], float64]: ...
 
 
 def contract_operator_20(

@@ -257,42 +257,20 @@ class Operator(ABC):
     @overload
     def contract(
         self,
-        views: tuple[ShellView, None],
+        views: tuple[ShellView, None] | tuple[None, ShellView],
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int], float64]: ...
     @overload
     def contract(
         self,
-        views: tuple[None, ShellView],
+        views: tuple[ShellView, ShellView] | tuple[ShellPairView, None] | tuple[None, ShellPairView],
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
-    ) -> array[tuple[int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellView, ShellView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-    ) -> array[tuple[int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellPairView, None],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-    ) -> array[tuple[int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[None, ShellPairView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int], float64]: ...
     @overload
     def contract(
@@ -301,6 +279,7 @@ class Operator(ABC):
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int, int], float64]: ...
     @overload
     def contract(
@@ -309,7 +288,44 @@ class Operator(ABC):
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int, int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellView, None] | tuple[None, ShellView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: Literal[True] = True,
+    ) -> array[tuple[int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellView, ShellView] | tuple[ShellPairView, None] | tuple[None, ShellPairView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: Literal[True] = True,
+    ) -> array[tuple[int, int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellView, ShellPairView] | tuple[ShellPairView, ShellView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: Literal[True] = True,
+    ) -> array[tuple[int, int, int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellPairView, ShellPairView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: Literal[True] = True,
+    ) -> array[tuple[int, int, int, int, int], float64]: ...
 
     def contract(
         self,
@@ -318,6 +334,7 @@ class Operator(ABC):
         expansion: tuple[ExpansionMatrix | None, ExpansionMatrix | None] | None = None,
         *,
         spherical: bool = False,
+        batch_dim: bool = False,
     ) -> array[tuple[int, ...], float64]:
         r"""Contract the operator matrix with the expansion coefficients and reduce primitives.
 
@@ -326,6 +343,7 @@ class Operator(ABC):
             operator: Operator matrix to contract.
             expansion: Expansion matrices to contract.
             spherical: Return real spherical instead of Cartesian integrals.
+            batch_dim: Preserve the batch dimension in the output matrix.
 
         Returns:
             Contracted operator matrix.
@@ -336,15 +354,15 @@ class Operator(ABC):
             expansion = self.get_expansion_matrices(views, spherical=spherical)
 
         if check_views_rank(views, (1, 0)):
-            return contract_operator_10(operator, views[0], expansion[0], spherical=spherical)
+            return contract_operator_10(operator, views[0], expansion[0], batch_dim=batch_dim, spherical=spherical)
         elif check_views_rank(views, (1, 1)):
-            return contract_operator_11(operator, *views, *expansion, spherical=spherical)
+            return contract_operator_11(operator, *views, *expansion, batch_dim=batch_dim, spherical=spherical)
         elif check_views_rank(views, (1, 2)):
-            return contract_operator_12(operator, views[0], views[1], *expansion, spherical=spherical)
+            return contract_operator_12(operator, *views, *expansion, batch_dim=batch_dim, spherical=spherical)
         elif check_views_rank(views, (2, 2)):
-            return contract_operator_22(operator, *views, *expansion, spherical=spherical)
+            return contract_operator_22(operator, *views, *expansion, batch_dim=batch_dim, spherical=spherical)
         elif check_views_rank(views, (2, 0)):
-            return contract_operator_20(operator, views[0], expansion[0], spherical=spherical)
+            return contract_operator_20(operator, views[0], expansion[0], batch_dim=batch_dim, spherical=spherical)
         raise NotImplementedError(
             f"contraction for operator {self.__class__.__name__} with views {views} not implemented."
         )
