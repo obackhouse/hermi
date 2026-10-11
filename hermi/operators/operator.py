@@ -9,8 +9,15 @@ from typing import TYPE_CHECKING, overload
 
 import numpy as np
 
-from hermi.integrals.collect import collect_integral_11, collect_integral_12, collect_integral_20, collect_integral_22
+from hermi.integrals.collect import (
+    collect_integral_10,
+    collect_integral_11,
+    collect_integral_12,
+    collect_integral_20,
+    collect_integral_22,
+)
 from hermi.integrals.contract import (
+    contract_operator_10,
     contract_operator_11,
     contract_operator_12,
     contract_operator_20,
@@ -328,7 +335,9 @@ class Operator(ABC):
         if expansion is None:
             expansion = self.get_expansion_matrices(views, spherical=spherical)
 
-        if check_views_rank(views, (1, 1)):
+        if check_views_rank(views, (1, 0)):
+            return contract_operator_10(operator, views[0], expansion[0], spherical=spherical)
+        elif check_views_rank(views, (1, 1)):
             return contract_operator_11(operator, *views, *expansion, spherical=spherical)
         elif check_views_rank(views, (1, 2)):
             return contract_operator_12(operator, views[0], views[1], *expansion, spherical=spherical)
@@ -427,7 +436,15 @@ class Operator(ABC):
                 f"operator symmetry {symmetry_type.__name__} not supported by operator {self.__class__.__name__}"
             )
 
-        if signature == (1, 1):
+        if signature == (1, 0):
+            return collect_integral_10(
+                basis,
+                self,
+                ao_slices=(ao_slices[0],),
+                symmetry_type=symmetry_type,
+                spherical=spherical,
+            )
+        elif signature == (1, 1):
             return collect_integral_11(
                 basis,
                 self,

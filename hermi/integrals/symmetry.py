@@ -149,6 +149,86 @@ class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
 
 
 @dataclass(frozen=True)
+class SymmetryN1S1(Symmetry[tuple[int], tuple[slice]]):
+    """Symmetry for a 1D array with no symmetry (S1)."""
+
+    @overload
+    def set_value[T: number](
+        self,
+        array: array[tuple[int], T],
+        indices: tuple[int],
+        value: T,
+    ) -> None: ...
+    @overload
+    def set_value[T: number](
+        self,
+        array: array[tuple[int], T],
+        indices: tuple[slice],
+        value: array[tuple[int], T],
+    ) -> None: ...
+
+    def set_value[T: number](
+        self,
+        array: array[tuple[int], T],
+        indices: tuple[int] | tuple[slice],
+        value: T | array[tuple[int], T],
+    ) -> None:
+        """Set an array value according to the symmetry.
+
+        Args:
+            array: Array to set values in.
+            indices: Indices to set values at.
+            value: Value to set.
+        """
+        array[indices] = value
+
+    def ravel_index(self, index: tuple[int]) -> int:
+        """Ravel an index according to the symmetry.
+
+        Args:
+            index: Index to ravel.
+
+        Returns:
+            Raveled index.
+        """
+        return index[0]
+
+    def unravel_index(self, index: int) -> tuple[int]:
+        """Unravel an index according to the symmetry.
+
+        Args:
+            index: Index to unravel.
+
+        Returns:
+            Unraveled index.
+        """
+        return (index,)
+
+    @property
+    def ravelled_size(self) -> int:
+        """Total size of the ravelled array."""
+        return self.shape[0]
+
+    def canonical_indices(self) -> Iterable[tuple[tuple[int], bool]]:
+        """Yield canonical indices for the symmetry.
+
+        Yields:
+            Canonical indices for the symmetry and whether their sign flips under the permutation.
+        """
+        for i in range(self.shape[0]):
+            yield (i,), False
+
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 1:
+            raise ValueError("objects must have length 1")
+
+
+@dataclass(frozen=True)
 class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
     """Symmetry for a 2D array with no symmetry (S1)."""
 

@@ -83,6 +83,51 @@ def _unpack_from_shell_pair_major[S: tuple[int, ...]](
     return expanded.reshape(tuple(map(prod, zip(num_shells, num_ang))))  # type: ignore[return-value]
 
 
+def contract_operator_10(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    expansion_a: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+) -> array[tuple[int], float64]:
+    r"""Contract a Hermite operator with (1, 0) Hermite expansion matrices for :math:`(a|\hat{O})`.
+
+    Args:
+        operator: Hermite operator matrix with shape ``(a, 1, p, 1)`` or ``(n, a, 1, p, 1)``.
+        shell_a: Single shell view.
+        expansion_a: Expansion matrix for the single shell with shape ``(a, i, p)`` or ``(n, a, i, p)``.
+        spherical: Return real spherical instead of Cartesian integrals.
+
+    Returns:
+        Contracted Cartesian or real spherical :math:`(a|\hat{O})` with shape ``(ai,)``.
+    """
+    if expansion_a is None:
+        expansion_a = Expansion(shell_a).compute(spherical=spherical)
+    coefficients = shell_a.coefficient
+
+    # Align dimensions
+    operator = np.expand_dims(operator, axis=0) if operator.ndim == 4 else operator  # a 1 p 1 -> n a 1 p 1
+    expansion_a = np.expand_dims(expansion_a, axis=1 if expansion_a.ndim == 4 else (0, 2))  # a i p -> n a 1 i p
+    coefficients = np.expand_dims(coefficients, axis=(0, 2, 3, 4))  # a -> 1 a 1 1 1
+
+    # Apply the contraction coefficients
+    operator = operator * coefficients  # n a 1 p 1, n a 1 1 1 -> n a 1 p 1
+
+    # Contract the operator with the expansion matrix
+    contracted = expansion_a @ operator  # n a 1 i p, n a 1 p 1 -> n a 1 i 1
+
+    # Sum over batch dimension
+    contracted = np.sum(contracted, axis=(0, 2, 4))  # n a 1 i 1 -> a i
+
+    # Reduce the a shell axis
+    contracted = _reduce_primitive(contracted, shell_a, axis=0)  # a i -> a i
+
+    # Unpack the contracted result into the final integral array
+    contracted = contracted.ravel()  # a i -> ai
+
+    return contracted
+
+
 def contract_operator_11(
     operator: OperatorMatrix,
     shell_a: ShellView,
