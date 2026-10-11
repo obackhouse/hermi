@@ -10,7 +10,7 @@ import numpy as np
 from scipy.special import lpmv
 
 if TYPE_CHECKING:
-    from typing import Any, Never
+    from typing import Any, Generator, Never
 
     from numpy import float64, int64
 
@@ -184,6 +184,21 @@ def rebase_slice(source: slice, target: slice) -> slice:
     start = source.start - target.start if source.start is not None else None
     stop = source.stop - target.start if source.stop is not None else None
     return slice(start, stop, source.step)
+
+
+def iter_slices(start: int, stop: int, step: int) -> Generator[slice]:
+    """Iterate over slices of a given step size.
+
+    Args:
+        start: Start index.
+        stop: Stop index.
+        step: Step size.
+
+    Yields:
+        Tuples of (start, stop) indices for each slice.
+    """
+    for i in range(start, stop, step):
+        yield slice(i, min(i + step, stop))
 
 
 def unreachable() -> Never:
