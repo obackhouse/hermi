@@ -205,6 +205,66 @@ def contract_operator_22(
     return contracted
 
 
+def contract_operator_12(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    pair_bc: ShellPairView,
+    expansion_a: ExpansionMatrix | None = None,
+    expansion_bc: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+) -> array[tuple[int, int, int], float64]:
+    r"""Contract a Hermite operator with (1, 2) Hermite expansion matrices for :math:`(a|\hat{O}|bc)`.
+
+    Args:
+        operator: Hermite operator matrix with shape ``(a, bc, p, q)`` or ``(n, a, bc, p, q)``.
+        shell_a: Single shell view.
+        pair_bc: Shell pair view.
+        expansion_a: Expansion matrix for the single shell with shape ``(a, i, p)`` or ``(n, a, i, p)``.
+        expansion_bc: Expansion matrix for the shell pair with shape ``(bc, jk, q)`` or ``(n, bc, jk, q)``.
+        spherical: Return real spherical instead of Cartesian integrals.
+
+    Returns:
+        Contracted Cartesian or real spherical :math:`(a|\hat{O}|bc)` integral block with shape ``(ai, bj, ck)``.
+    """
+    if expansion_a is None:
+        expansion_a = Expansion(shell_a).compute(spherical=spherical)
+    if expansion_bc is None:
+        expansion_bc = Expansion(pair_bc).compute(spherical=spherical)
+    coefficients = np.multiply.outer(shell_a.coefficient, pair_bc.coefficient.ravel())
+
+    # Align dimensions
+    operator = np.expand_dims(operator, axis=0) if operator.ndim == 4 else operator  # a bc p q -> n a bc p q
+    expansion_a = np.expand_dims(expansion_a, axis=1 if expansion_a.ndim == 4 else (0, 2))  # a i p -> n a 1 i p
+    expansion_bc = np.expand_dims(expansion_bc, axis=0 if expansion_bc.ndim == 4 else (0, 1))  # bc jk q -> n 1 bc jk q
+    coefficients = np.expand_dims(coefficients, axis=(0, 3, 4))  # a bc -> 1 a bc 1 1
+
+    # Apply the contraction coefficients
+    operator = operator * coefficients  # n a bc p q, 1 a bc 1 1 -> n a bc p q
+
+    # Contract the operator with the shell-pair expansion matrix
+    contracted = operator @ expansion_bc.mT  # n a bc p q, n 1 bc q jk -> n a bc p jk
+
+    # Reduce the b and c shell axes
+    contracted = _reduce_primitive_pair(contracted, pair_bc, axis=2)  # n a bc p jk -> n a bc p jk
+
+    # Contract the result with the single-shell expansion matrix
+    contracted = expansion_a @ contracted  # n a 1 i p, n a bc p jk -> n a bc i jk
+
+    # Sum over batch dimension
+    contracted = np.sum(contracted, axis=0)  # n a bc i jk -> a bc i jk
+
+    # Reduce the a shell axis
+    contracted = _reduce_primitive(contracted, shell_a, axis=0)  # a bc i jk -> a bc i jk
+
+    # Unpack the shell-pair-major array to the final integral array
+    contracted = _unpack_from_shell_pair_major(  # a bc i jk -> ai bj ck
+        contracted, shell_a, pair_bc.shell_i, pair_bc.shell_j, spherical=spherical
+    )
+
+    return contracted
+
+
 def contract_operator_20(
     operator: OperatorMatrix,
     pair_ab: ShellPairView,

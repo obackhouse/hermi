@@ -21,6 +21,59 @@ def test_coulomb_against_pyscf(example_system, normalized_reference, spherical: 
     np.testing.assert_allclose(actual, reference, rtol=1e-6, atol=1e-8)
 
 
+@pytest.mark.parametrize("spherical, suffix", ((False, "cart"), (True, "sph")))
+def test_coulomb_11_against_pyscf(example_system, normalized_reference, spherical: bool, suffix: str) -> None:
+    """Compare (1, 1) Coulomb integrals against PySCF for each example system."""
+    actual = Coulomb().collect(example_system.basis, signature=(1, 1), spherical=spherical)
+    reference = normalized_reference(example_system, f"int2c2e_{suffix}", suffix)
+
+    assert actual.shape == reference.shape
+    np.testing.assert_allclose(actual, reference, rtol=1e-6, atol=1e-8)
+
+
+@pytest.mark.parametrize("spherical, suffix", ((False, "cart"), (True, "sph")))
+def test_coulomb_12_against_pyscf(example_system, spherical: bool, suffix: str) -> None:
+    """Compare (1, 2) Coulomb integrals against PySCF for each example system."""
+    basis = example_system.basis
+    num_aos = basis.num_contracted_spherical_aos if spherical else basis.num_contracted_cartesian_aos
+    combined_basis = basis.concatenate(basis)
+    ao_slices = (slice(0, num_aos), slice(num_aos, None), slice(num_aos, None))
+    actual = Coulomb().collect(combined_basis, signature=(1, 2), ao_slices=ao_slices, spherical=spherical)
+
+    molecule = example_system.reference
+    reference = molecule.intor(f"int3c2e_{suffix}").transpose(2, 0, 1)
+    overlap = molecule.intor(f"int1e_ovlp_{suffix}")
+    scale = 1 / np.sqrt(np.diag(overlap))
+    reference *= scale[:, None, None] * scale[None, :, None] * scale[None, None, :]
+
+    assert actual.shape == reference.shape
+    np.testing.assert_allclose(actual, reference, rtol=1e-6, atol=1e-8)
+
+
+@pytest.mark.parametrize("spherical", (False, True))
+def test_coulomb_12_ao_slices_match_full_array(example_system, spherical: bool) -> None:
+    """Compare sliced (1, 2) Coulomb integrals with slices of the full tensor."""
+    basis = example_system.basis
+    combined_basis = basis.concatenate(basis)
+    num_aos = basis.num_contracted_spherical_aos if spherical else basis.num_contracted_cartesian_aos
+    full = Coulomb().collect(
+        combined_basis,
+        signature=(1, 2),
+        ao_slices=(slice(0, num_aos), slice(num_aos, None), slice(num_aos, None)),
+        spherical=spherical,
+    )
+    ao_slices = (slice(0, num_aos, 2), slice(num_aos, 2 * num_aos, 2), slice(2 * num_aos - 1, num_aos - 1, -2))
+    actual = Coulomb().collect(combined_basis, signature=(1, 2), ao_slices=ao_slices, spherical=spherical)
+    offsets = (0, num_aos, num_aos)
+    indices = tuple(
+        np.arange(*ao_slice.indices(2 * num_aos)) - offset for ao_slice, offset in zip(ao_slices, offsets)
+    )
+    expected = full[np.ix_(*indices)]
+
+    assert actual.shape == expected.shape
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+
+
 @pytest.mark.parametrize("spherical", (False, True))
 def test_coulomb_ao_slices_match_full_array(example_system, spherical: bool) -> None:
     """Compare sliced Coulomb integrals with slices of the full tensor."""

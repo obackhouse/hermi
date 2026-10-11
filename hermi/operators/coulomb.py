@@ -10,11 +10,21 @@ import numpy as np
 from hermi.boys import boys
 from hermi.hermite import hermite_indices, hermite_integral_recursion, hermite_operator_matrix_indices
 from hermi.operators.operator import Operator, check_views_rank
-from hermi.symmetry import SymmetryN4S1, SymmetryN4S4, SymmetryN4S8
+from hermi.symmetry import (
+    SymmetryN2S1,
+    SymmetryN2S2,
+    SymmetryN3S1,
+    SymmetryN3S2Ket,
+    SymmetryN4S1,
+    SymmetryN4S4,
+    SymmetryN4S8,
+)
 from hermi.util import outer_powers, unreachable
 
 if TYPE_CHECKING:
-    from hermi.basis import ShellPairView
+    from typing import Any
+
+    from hermi.basis import ShellPairView, ShellView
     from hermi.operators.operator import OperatorMatrix, View
     from hermi.symmetry import Symmetry
 
@@ -29,45 +39,52 @@ class Coulomb(Operator):
         \hat{O} = \frac{1}{|r_1 - r_2|}.
     """
 
-    @property
-    def default_signature(self) -> tuple[int, int]:
+    def get_default_signature(
+        self,
+        signature: tuple[int, int] | None = None,
+        ao_slices: tuple[slice, ...] | None = None,
+    ) -> tuple[int, int]:
         r"""Default signature of the operator."""
         return (2, 2)
 
     @property
     def supported_signatures(self) -> tuple[tuple[int, int], ...]:
         r"""Supported signatures of the operator."""
-        return ((2, 2),)
-
-    @property
-    def default_symmetry(
-        self,
-    ) -> type[Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]]:
-        r"""Default symmetry of the operator."""
-        return SymmetryN4S8
+        return ((1, 1), (1, 2), (2, 2))
 
     @property
     def supported_symmetries(
         self,
-    ) -> tuple[type[Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]], ...]:
+    ) -> tuple[type[Symmetry[Any, Any]], ...]:
         r"""Supported symmetries of the operator."""
         return (
+            SymmetryN2S1,
+            SymmetryN2S2,
+            SymmetryN3S1,
+            SymmetryN3S2Ket,
             SymmetryN4S1,
             SymmetryN4S4,
             SymmetryN4S8,
         )
 
-    def _get_operator_matrix_22(self, views: tuple[ShellPairView, ShellPairView]) -> OperatorMatrix:
-        r"""Compute the (2, 2) Coulomb operator matrix in the Hermite basis."""
-        pair_ab, pair_cd = views
-        max_order = pair_ab.angular_momentum + pair_cd.angular_momentum
-        displacement = pair_ab.position.reshape(-1, 1, 3) - pair_cd.position.reshape(1, -1, 3)
-        exponent_product = pair_ab.exponent.reshape(-1, 1) * pair_cd.exponent.reshape(1, -1)
-        exponent_sum = pair_ab.exponent.reshape(-1, 1) + pair_cd.exponent.reshape(1, -1)
+    def _get_operator_matrix(
+        self,
+        exponent_a: np.ndarray,
+        position_a: np.ndarray,
+        angular_momentum_a: int,
+        exponent_b: np.ndarray,
+        position_b: np.ndarray,
+        angular_momentum_b: int,
+    ) -> OperatorMatrix:
+        """Compute the Coulomb Hermite matrix for two Gaussian distributions."""
+        max_order = angular_momentum_a + angular_momentum_b
+        displacement = position_a.reshape(-1, 1, 3) - position_b.reshape(1, -1, 3)
+        exponent_product = exponent_a.reshape(-1, 1) * exponent_b.reshape(1, -1)
+        exponent_sum = exponent_a.reshape(-1, 1) + exponent_b.reshape(1, -1)
         exponent = exponent_product / exponent_sum
         argument = np.einsum("...,...x,...x->...", exponent, displacement, displacement, optimize=True)
 
-        auxiliary = np.zeros((max_order + 1,) * 4 + (len(pair_ab), len(pair_cd)), dtype=np.float64)
+        auxiliary = np.zeros((max_order + 1,) * 4 + (exponent_a.size, exponent_b.size), dtype=np.float64)
 
         # Fundamental value
         fundamental = np.moveaxis(outer_powers(-2 * exponent, max_order) * boys(argument, max_order), -1, 0)
@@ -87,12 +104,48 @@ class Coulomb(Operator):
 
         # Construct operator matrix
         indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
-        sum_indices, signs = hermite_operator_matrix_indices(pair_ab.angular_momentum, pair_cd.angular_momentum)
+        sum_indices, signs = hermite_operator_matrix_indices(angular_momentum_a, angular_momentum_b)
         zero_order = np.moveaxis(auxiliary[*indices, 0], 0, -1)
         operator = np.take(zero_order, sum_indices, axis=-1)
         operator *= signs  # cheaper to apply to E, but we want operators self-contained
 
         return operator
+
+    def _get_operator_matrix_11(self, views: tuple[ShellView, ShellView]) -> OperatorMatrix:
+        r"""Compute the (1, 1) Coulomb operator matrix in the Hermite basis."""
+        shell_a, shell_b = views
+        return self._get_operator_matrix(
+            shell_a.exponent,
+            shell_a.position,
+            shell_a.angular_momentum,
+            shell_b.exponent,
+            shell_b.position,
+            shell_b.angular_momentum,
+        )
+
+    def _get_operator_matrix_12(self, views: tuple[ShellView, ShellPairView]) -> OperatorMatrix:
+        r"""Compute the (1, 2) Coulomb operator matrix in the Hermite basis."""
+        shell_a, pair_bc = views
+        return self._get_operator_matrix(
+            shell_a.exponent,
+            shell_a.position,
+            shell_a.angular_momentum,
+            pair_bc.exponent.ravel(),
+            pair_bc.position.reshape(-1, 3),
+            pair_bc.angular_momentum,
+        )
+
+    def _get_operator_matrix_22(self, views: tuple[ShellPairView, ShellPairView]) -> OperatorMatrix:
+        r"""Compute the (2, 2) Coulomb operator matrix in the Hermite basis."""
+        pair_ab, pair_cd = views
+        return self._get_operator_matrix(
+            pair_ab.exponent.ravel(),
+            pair_ab.position.reshape(-1, 3),
+            pair_ab.angular_momentum,
+            pair_cd.exponent.ravel(),
+            pair_cd.position.reshape(-1, 3),
+            pair_cd.angular_momentum,
+        )
 
     def get_operator_matrix(self, views: tuple[View, View]) -> OperatorMatrix:
         r"""Compute the Coulomb operator matrix in the Hermite basis.
@@ -106,6 +159,10 @@ class Coulomb(Operator):
             shells, and ``n_hermite_bra`` and ``n_hermite_ket`` are the number of Hermite Gaussians in the bra and ket
             shells.
         """
-        if check_views_rank(views, (2, 2)):
+        if check_views_rank(views, (1, 1)):
+            return self._get_operator_matrix_11(views)
+        elif check_views_rank(views, (1, 2)):
+            return self._get_operator_matrix_12(views)
+        elif check_views_rank(views, (2, 2)):
             return self._get_operator_matrix_22(views)
         return unreachable()

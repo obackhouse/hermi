@@ -10,10 +10,18 @@ from typing import TYPE_CHECKING, overload
 import numpy as np
 
 from hermi.basis import ShellPairView, ShellView
-from hermi.collect import collect_integral_11, collect_integral_20, collect_integral_22
-from hermi.contract import contract_operator_11, contract_operator_20, contract_operator_22
+from hermi.collect import collect_integral_11, collect_integral_12, collect_integral_20, collect_integral_22
+from hermi.contract import contract_operator_11, contract_operator_12, contract_operator_20, contract_operator_22
 from hermi.expansion import Expansion
-from hermi.symmetry import SymmetryN2S1, SymmetryN2S2, SymmetryN4S1, SymmetryN4S4, SymmetryN4S8
+from hermi.symmetry import (
+    SymmetryN2S1,
+    SymmetryN2S2,
+    SymmetryN3S1,
+    SymmetryN3S2Ket,
+    SymmetryN4S1,
+    SymmetryN4S4,
+    SymmetryN4S8,
+)
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -148,9 +156,12 @@ class Operator(ABC):
         """Get the total number of shells in the bra and ket views."""
         return (0 if views[0] is None else views[0].rank) + (0 if views[1] is None else views[1].rank)
 
-    @property
     @abstractmethod
-    def default_signature(self) -> tuple[int, int]:
+    def get_default_signature(
+        self,
+        signature: tuple[int, int] | None = None,
+        ao_slices: tuple[slice, ...] | None = None,
+    ) -> tuple[int, int]:
         r"""Default signature of the operator."""
         pass
 
@@ -160,11 +171,37 @@ class Operator(ABC):
         r"""Supported signatures of the operator."""
         pass
 
-    @property
-    @abstractmethod
-    def default_symmetry(self) -> type[Symmetry[Any, Any]]:
+    def get_default_symmetry(
+        self,
+        signature: tuple[int, int],
+        ao_slices: tuple[slice, ...],
+        basis: Basis,
+        *,
+        spherical: bool = False,
+    ) -> type[Symmetry[Any, Any]]:
         r"""Default symmetry of the operator."""
-        pass
+        num_aos = basis.num_contracted_spherical_aos if spherical else basis.num_contracted_cartesian_aos
+        selected_aos = tuple(np.arange(*ao_slice.indices(num_aos)) for ao_slice in ao_slices)
+        symmetry_type: type[Symmetry[Any, Any]]
+        if signature in ((1, 1), (2, 0)):
+            symmetry_type = SymmetryN2S2 if np.array_equal(selected_aos[0], selected_aos[1]) else SymmetryN2S1
+        elif signature == (1, 2):
+            symmetry_type = SymmetryN3S2Ket if np.array_equal(selected_aos[1], selected_aos[2]) else SymmetryN3S1
+        elif signature == (2, 2):
+            same_ao_pairs = np.array_equal(selected_aos[0], selected_aos[1]) and np.array_equal(
+                selected_aos[2], selected_aos[3]
+            )
+            if same_ao_pairs and np.array_equal(selected_aos[0], selected_aos[2]):
+                symmetry_type = SymmetryN4S8
+            elif same_ao_pairs:
+                symmetry_type = SymmetryN4S4
+            else:
+                symmetry_type = SymmetryN4S1
+        else:
+            symmetry_type = self.supported_symmetries[0]
+        if symmetry_type not in self.supported_symmetries:
+            return self.supported_symmetries[0]
+        return symmetry_type
 
     @property
     @abstractmethod
@@ -288,6 +325,8 @@ class Operator(ABC):
 
         if check_views_rank(views, (1, 1)):
             return contract_operator_11(operator, *views, *expansion, spherical=spherical)
+        elif check_views_rank(views, (1, 2)):
+            return contract_operator_12(operator, views[0], views[1], *expansion, spherical=spherical)
         elif check_views_rank(views, (2, 2)):
             return contract_operator_22(operator, *views, *expansion, spherical=spherical)
         elif check_views_rank(views, (2, 0)):
@@ -369,33 +408,15 @@ class Operator(ABC):
             Contracted Cartesian or real spherical AO integrals.
         """
         if signature is None:
-            signature = self.default_signature
+            signature = self.get_default_signature(signature, ao_slices)
+        if signature not in self.supported_signatures:
+            raise ValueError(f"operator signature {signature} not supported by operator {self.__class__.__name__}")
         if ao_slices is None:
             ao_slices = (slice(None),) * sum(signature)
         elif len(ao_slices) != sum(signature):
             raise ValueError(f"ao_slices must contain {sum(signature)} slices for signature {signature}")
-
-        if signature not in self.supported_signatures:
-            raise ValueError(f"operator signature {signature} not supported by operator {self.__class__.__name__}")
-
         if symmetry_type is None:
-            num_aos = basis.num_contracted_spherical_aos if spherical else basis.num_contracted_cartesian_aos
-            selected_aos = tuple(np.arange(*ao_slice.indices(num_aos)) for ao_slice in ao_slices)
-            if signature in ((1, 1), (2, 0)):
-                symmetry_type = SymmetryN2S2 if np.array_equal(selected_aos[0], selected_aos[1]) else SymmetryN2S1
-            elif signature == (2, 2):
-                same_ao_pairs = np.array_equal(selected_aos[0], selected_aos[1]) and np.array_equal(
-                    selected_aos[2], selected_aos[3]
-                )
-                if same_ao_pairs and np.array_equal(selected_aos[0], selected_aos[2]):
-                    symmetry_type = SymmetryN4S8
-                elif same_ao_pairs:
-                    symmetry_type = SymmetryN4S4
-                else:
-                    symmetry_type = SymmetryN4S1
-            else:
-                symmetry_type = self.default_symmetry
-
+            symmetry_type = self.get_default_symmetry(signature, ao_slices, basis, spherical=spherical)
         if symmetry_type not in self.supported_symmetries:
             raise ValueError(
                 f"operator symmetry {symmetry_type.__name__} not supported by operator {self.__class__.__name__}"
@@ -406,6 +427,14 @@ class Operator(ABC):
                 basis,
                 self,
                 ao_slices=(ao_slices[0], ao_slices[1]),
+                symmetry_type=symmetry_type,
+                spherical=spherical,
+            )
+        elif signature == (1, 2):
+            return collect_integral_12(
+                basis,
+                self,
+                ao_slices=(ao_slices[0], ao_slices[1], ao_slices[2]),
                 symmetry_type=symmetry_type,
                 spherical=spherical,
             )
@@ -466,15 +495,19 @@ class OperatorSum(Operator):
         if len(self.supported_signatures) == 0:
             raise ValueError("operator sum must contain operators with compatible signatures")
 
-    @property
-    def default_signature(self) -> tuple[int, int]:
+    def get_default_signature(
+        self,
+        signature: tuple[int, int] | None = None,
+        ao_slices: tuple[slice, ...] | None = None,
+    ) -> tuple[int, int]:
         r"""Default signature of the operator."""
         default_signatures: dict[tuple[int, int], int] = {}
         supported_signatures = self.supported_signatures
         for operator in self.operators:
-            if operator.default_signature not in supported_signatures:
+            default_signature = operator.get_default_signature(signature, ao_slices)
+            if default_signature not in supported_signatures:
                 continue
-            default_signatures[operator.default_signature] = default_signatures.get(operator.default_signature, 0) + 1
+            default_signatures[default_signature] = default_signatures.get(default_signature, 0) + 1
         if len(default_signatures) == 0:
             return supported_signatures[0]
         return max(default_signatures, key=default_signatures.__getitem__)
@@ -484,15 +517,22 @@ class OperatorSum(Operator):
         r"""Supported signatures of the operator."""
         return tuple(set.intersection(*(set(operator.supported_signatures) for operator in self.operators)))
 
-    @property
-    def default_symmetry(self) -> type[Symmetry[Any, Any]]:
+    def get_default_symmetry(
+        self,
+        signature: tuple[int, int],
+        ao_slices: tuple[slice, ...],
+        basis: Basis,
+        *,
+        spherical: bool = False,
+    ) -> type[Symmetry[Any, Any]]:
         r"""Default symmetry of the operator."""
         default_symmetries: dict[type[Symmetry[Any, Any]], int] = {}
         supported_symmetries = self.supported_symmetries
         for operator in self.operators:
-            if operator.default_symmetry not in supported_symmetries:
+            default_symmetry = operator.get_default_symmetry(signature, ao_slices, basis, spherical=spherical)
+            if default_symmetry not in supported_symmetries:
                 continue
-            default_symmetries[operator.default_symmetry] = default_symmetries.get(operator.default_symmetry, 0) + 1
+            default_symmetries[default_symmetry] = default_symmetries.get(default_symmetry, 0) + 1
         if len(default_symmetries) == 0:
             return supported_symmetries[0]
         return max(default_symmetries, key=default_symmetries.__getitem__)
@@ -568,20 +608,29 @@ class OperatorScaled(Operator):
     operator: Operator
     scale: float
 
-    @property
-    def default_signature(self) -> tuple[int, int]:
+    def get_default_signature(
+        self,
+        signature: tuple[int, int] | None = None,
+        ao_slices: tuple[slice, ...] | None = None,
+    ) -> tuple[int, int]:
         r"""Default signature of the operator."""
-        return self.operator.default_signature
+        return self.operator.get_default_signature(signature, ao_slices)
 
     @property
     def supported_signatures(self) -> tuple[tuple[int, int], ...]:
         r"""Supported signatures of the operator."""
         return self.operator.supported_signatures
 
-    @property
-    def default_symmetry(self) -> type[Symmetry[Any, Any]]:
+    def get_default_symmetry(
+        self,
+        signature: tuple[int, int],
+        ao_slices: tuple[slice, ...],
+        basis: Basis,
+        *,
+        spherical: bool = False,
+    ) -> type[Symmetry[Any, Any]]:
         r"""Default symmetry of the operator."""
-        return self.operator.default_symmetry
+        return self.operator.get_default_symmetry(signature, ao_slices, basis, spherical=spherical)
 
     @property
     def supported_symmetries(self) -> tuple[type[Symmetry[Any, Any]], ...]:

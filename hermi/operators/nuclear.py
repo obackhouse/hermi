@@ -32,8 +32,11 @@ class Nuclear(Operator):
 
     molecule: Molecule
 
-    @property
-    def default_signature(self) -> tuple[int, int]:
+    def get_default_signature(
+        self,
+        signature: tuple[int, int] | None = None,
+        ao_slices: tuple[slice, ...] | None = None,
+    ) -> tuple[int, int]:
         r"""Default signature of the operator."""
         return (2, 0)
 
@@ -41,11 +44,6 @@ class Nuclear(Operator):
     def supported_signatures(self) -> tuple[tuple[int, int], ...]:
         r"""Supported signatures of the operator."""
         return ((2, 0),)
-
-    @property
-    def default_symmetry(self) -> type[Symmetry[tuple[int, int], tuple[slice, slice]]]:
-        r"""Default symmetry of the operator."""
-        return SymmetryN2S2
 
     @property
     def supported_symmetries(self) -> tuple[type[Symmetry[tuple[int, int], tuple[slice, slice]]], ...]:

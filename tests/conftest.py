@@ -90,16 +90,9 @@ def normalized_reference():
         values = example_system.reference.intor(integral, **kwargs)
         overlap = example_system.reference.intor(f"int1e_ovlp_{suffix}")
         scale = 1 / np.sqrt(np.diag(overlap))
-
-        if values.ndim == 2:
-            values *= scale[:, None] * scale[None, :]
-        else:
-            values *= (
-                scale[:, None, None, None]
-                * scale[None, :, None, None]
-                * scale[None, None, :, None]
-                * scale[None, None, None, :]
-            )
+        for axis in range(values.ndim):
+            shape = (1,) * axis + (scale.size,) + (1,) * (values.ndim - axis - 1)
+            values *= scale.reshape(shape)
         return values
 
     return reference

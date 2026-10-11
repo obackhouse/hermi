@@ -51,6 +51,11 @@ class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
     def __post_init__(self) -> None:
         self.assert_symmetric_sequence(self.shape)
 
+    @property
+    def rank(self) -> int:
+        """Rank of the symmetry."""
+        return len(self.shape)
+
     @overload
     def set_value[T: number](self, array: array[S, T], indices: S, value: T) -> None: ...
     @overload
@@ -351,6 +356,177 @@ class SymmetryN2A2(SymmetryN2S2):
         array[i, j] = value
         if i != j:
             array[j, i] = -value
+
+
+@dataclass(frozen=True)
+class SymmetryN3S1(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]):
+    """Symmetry for a 3D array with no symmetry (S1)."""
+
+    @overload
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int], T],
+        indices: tuple[int, int, int],
+        value: T,
+    ) -> None: ...
+    @overload
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int], T],
+        indices: tuple[slice, slice, slice],
+        value: array[tuple[int, int, int], T],
+    ) -> None: ...
+
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int], T],
+        indices: tuple[int, int, int] | tuple[slice, slice, slice],
+        value: T | array[tuple[int, int, int], T],
+    ) -> None:
+        """Set an array value according to the symmetry.
+
+        Args:
+            array: Array to set values in.
+            indices: Indices to set values at.
+            value: Value to set.
+        """
+        array[indices] = value
+
+    def ravel_index(self, index: tuple[int, int, int]) -> int:
+        """Ravel an index according to the symmetry.
+
+        Args:
+            index: Index to ravel.
+
+        Returns:
+            Raveled index.
+        """
+        return self.ravel_asymmetric_index(index)
+
+    def unravel_index(self, index: int) -> tuple[int, int, int]:
+        """Unravel an index according to the symmetry.
+
+        Args:
+            index: Index to unravel.
+
+        Returns:
+            Unraveled index.
+        """
+        return self.unravel_asymmetric_index(index)
+
+    @property
+    def ravelled_size(self) -> int:
+        """Total size of the ravelled array."""
+        return prod(self.shape)
+
+    def canonical_indices(self) -> Iterable[tuple[tuple[int, int, int], bool]]:
+        """Yield canonical indices for the symmetry.
+
+        Yields:
+            Canonical indices for the symmetry and whether their sign flips under the permutation.
+        """
+        for indices in itertools.product(range(self.shape[0]), range(self.shape[1]), range(self.shape[2])):
+            yield indices, False
+
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 3:
+            raise ValueError("objects must have length 3")
+
+
+@dataclass(frozen=True)
+class SymmetryN3S2Ket(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]):
+    """Symmetry for a 3D array with S2 symmetry on the second two indices."""
+
+    @overload
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int], T],
+        indices: tuple[int, int, int],
+        value: T,
+    ) -> None: ...
+    @overload
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int], T],
+        indices: tuple[slice, slice, slice],
+        value: array[tuple[int, int, int], T],
+    ) -> None: ...
+
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, int, int], T],
+        indices: tuple[int, int, int] | tuple[slice, slice, slice],
+        value: T | array[tuple[int, int, int], T],
+    ) -> None:
+        """Set an array value according to the symmetry.
+
+        Args:
+            array: Array to set values in.
+            indices: Indices to set values at.
+            value: Value to set.
+        """
+        i, j, k = indices
+        array[i, j, k] = value
+        if j != k:
+            array[i, k, j] = np.transpose(value, (0, 2, 1))
+
+    def ravel_index(self, index: tuple[int, int, int]) -> int:
+        """Ravel an index according to the symmetry.
+
+        Args:
+            index: Index to ravel.
+
+        Returns:
+            Raveled index.
+        """
+        jk = _ravel_symmetric_indices(index[1], index[2])
+        num_jk = _ravel_symmetric_indices(self.shape[1], 0)
+        return index[0] * num_jk + jk
+
+    def unravel_index(self, index: int) -> tuple[int, int, int]:
+        """Unravel an index according to the symmetry.
+
+        Args:
+            index: Index to unravel.
+
+        Returns:
+            Unraveled index.
+        """
+        num_jk = _ravel_symmetric_indices(self.shape[1], 0)
+        i, jk = divmod(index, num_jk)
+        j, k = _unravel_symmetric_indices(jk)
+        return i, j, k
+
+    @property
+    def ravelled_size(self) -> int:
+        """Total size of the ravelled array."""
+        return self.shape[0] * _ravel_symmetric_indices(self.shape[1], 0)
+
+    def canonical_indices(self) -> Iterable[tuple[tuple[int, int, int], bool]]:
+        """Yield canonical indices for the symmetry.
+
+        Yields:
+            Canonical indices for the symmetry and whether their sign flips under the permutation.
+        """
+        for i in range(self.shape[0]):
+            for j, k in itertools.combinations_with_replacement(range(self.shape[1]), 2):
+                yield (i, j, k), False
+
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 3:
+            raise ValueError("objects must have length 3")
+        if not _equal_elements(objects[1], objects[2]):
+            raise ValueError("objects must be equal at index 1 and 2")
 
 
 @dataclass(frozen=True)

@@ -6,10 +6,18 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from hermi.symmetry import SymmetryN2S1, SymmetryN2S2, SymmetryN4S1, SymmetryN4S4, SymmetryN4S8
+from hermi.symmetry import (
+    SymmetryN2S1,
+    SymmetryN2S2,
+    SymmetryN3S1,
+    SymmetryN3S2Ket,
+    SymmetryN4S1,
+    SymmetryN4S4,
+    SymmetryN4S8,
+)
 
 if TYPE_CHECKING:
-    from typing import Iterable
+    from typing import Any, Iterable
 
     from numpy import float64, int64
 
@@ -149,6 +157,75 @@ def collect_integral_11(
     return matrix
 
 
+def collect_integral_12(
+    basis: Basis,
+    operator: Operator,
+    *,
+    ao_slices: tuple[slice, slice, slice] = (slice(None), slice(None), slice(None)),
+    symmetry_type: type[Symmetry[Any, Any]] | None = None,
+    spherical: bool = False,
+) -> array[tuple[int, int, int], float64]:
+    """Collect contracted AO integrals for a (1, 2) integral.
+
+    Args:
+        basis: Basis set.
+        operator: Operator to collect integrals for with (1, 2) signature.
+        ao_slices: AO slices for the single-function and pair axes in the original basis order.
+        symmetry_type: Symmetry helper class for the integral tensor. The default value depends on the pair slices.
+        spherical: Return real spherical instead of Cartesian integrals.
+
+    Returns:
+        Contracted Cartesian or real spherical AO integrals.
+    """
+    num_aos = basis.num_contracted_spherical_aos if spherical else basis.num_contracted_cartesian_aos
+
+    # Order the basis set to make equal angular momentum shells contiguous
+    basis, indices = basis.ordered_by_angular_momentum(spherical=spherical)
+
+    # Get AO selections
+    selected_original, selected_ordered, restore = zip(
+        *tuple(_get_ao_selection(ao_slice, indices, num_aos) for ao_slice in ao_slices)
+    )
+    same_pair_slices = np.array_equal(selected_original[1], selected_original[2])
+    if symmetry_type is None:
+        symmetry_type = SymmetryN3S2Ket if same_pair_slices else SymmetryN3S1
+
+    # Get selected shell groups and AO slices
+    shell_groups = list(basis.iter_shell_groups())
+    shells = [
+        _get_selected_shell_groups(shell_groups, selected_ordered[axis], spherical=spherical) for axis in range(3)
+    ]
+    pairs = list(basis.iter_shell_pair_groups())
+
+    # Get the symmetry helper
+    symmetry = symmetry_type((len(shells[0]), len(shells[1]), len(shells[2])))
+    if symmetry.rank != len(ao_slices):
+        raise ValueError(f"symmetry rank must be {len(ao_slices)} for (1, 2) integrals")
+    symmetry.assert_symmetric_sequence([selection.tolist() for selection in selected_original])
+    pair_symmetry = SymmetryN2S1((len(shell_groups), len(shell_groups)))
+    shell_group_indices = {shell.indices.start: index for index, shell in enumerate(shell_groups)}
+    matrix = np.zeros((len(selected_ordered[0]), len(selected_ordered[1]), len(selected_ordered[2])), dtype=np.float64)
+
+    # Compute matrix blocks
+    for (a, b, c), _ in symmetry.canonical_indices():
+        shell_a, i, indices_a = shells[0][a]
+        shell_b, j, indices_b = shells[1][b]
+        shell_c, k, indices_c = shells[2][c]
+        pair = pairs[
+            pair_symmetry.ravel_asymmetric_index(
+                (shell_group_indices[shell_b.indices.start], shell_group_indices[shell_c.indices.start])
+            )
+        ]
+        block = operator.contract((shell_a, pair), spherical=spherical)
+        block = block[np.ix_(indices_a, indices_b, indices_c)]
+        symmetry.set_value(matrix, (i, j, k), block)
+
+    # Reorder the matrix back to the original basis order
+    matrix = matrix[np.ix_(*restore)]
+
+    return matrix
+
+
 def collect_integral_20(
     basis: Basis,
     operator: Operator,
@@ -201,9 +278,11 @@ def collect_integral_20(
     for (a, b), _ in symmetry.canonical_indices():
         shell_a, i, indices_a = shells[0][a]
         shell_b, j, indices_b = shells[1][b]
-        shell_i = shell_group_indices[shell_a.indices.start]
-        shell_j = shell_group_indices[shell_b.indices.start]
-        pair = pairs[pair_symmetry.ravel_asymmetric_index((shell_i, shell_j))]
+        pair = pairs[
+            pair_symmetry.ravel_asymmetric_index(
+                (shell_group_indices[shell_a.indices.start], shell_group_indices[shell_b.indices.start])
+            )
+        ]
         block = operator.contract((pair, None), spherical=spherical)
         block = block[np.ix_(indices_a, indices_b)]
         symmetry.set_value(matrix, (i, j), block)
@@ -278,14 +357,16 @@ def collect_integral_22(
         shell_b, j, indices_b = shells[1][b]
         shell_c, k, indices_c = shells[2][c]
         shell_d, l, indices_d = shells[3][d]
-        index_ab = pair_symmetry.ravel_asymmetric_index(
-            (shell_group_indices[shell_a.indices.start], shell_group_indices[shell_b.indices.start])
-        )
-        index_cd = pair_symmetry.ravel_asymmetric_index(
-            (shell_group_indices[shell_c.indices.start], shell_group_indices[shell_d.indices.start])
-        )
-        pair_ab = pairs[index_ab]
-        pair_cd = pairs[index_cd]
+        pair_ab = pairs[
+            pair_symmetry.ravel_asymmetric_index(
+                (shell_group_indices[shell_a.indices.start], shell_group_indices[shell_b.indices.start])
+            )
+        ]
+        pair_cd = pairs[
+            pair_symmetry.ravel_asymmetric_index(
+                (shell_group_indices[shell_c.indices.start], shell_group_indices[shell_d.indices.start])
+            )
+        ]
         block = operator.contract((pair_ab, pair_cd), spherical=spherical)
         block = block[np.ix_(indices_a, indices_b, indices_c, indices_d)]
         symmetry.set_value(matrix, (i, j, k, l), block)
