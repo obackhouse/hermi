@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hermi"
 version = "0.1.0"
-description = "NumPy matrix McMurchie-Davidson electron-repulsion integrals"
+description = "A Python package for computing integrals over atom-centred Gaussian basis functions for us in quantum chemistry"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.1.0",
