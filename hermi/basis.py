@@ -198,6 +198,26 @@ class Basis(DefaultHash):
         )
         return cls.from_shells(shells).normalize()
 
+    def concatenate(self, other: Basis) -> Basis:
+        """Concatenate two bases into a new basis.
+
+        Args:
+            other: Basis to concatenate with this basis.
+
+        Returns:
+            A new basis with the shells and shell pairs of both bases.
+        """
+        shells = Shells(
+            position=np.concatenate((self.shells.position, other.shells.position), axis=0),
+            exponent=np.concatenate((self.shells.exponent, other.shells.exponent), axis=0),
+            coefficient=np.concatenate((self.shells.coefficient, other.shells.coefficient), axis=0),
+            angular_momentum=np.concatenate((self.shells.angular_momentum, other.shells.angular_momentum), axis=0),
+            shell_indices=np.concatenate(
+                (self.shells.shell_indices, other.shells.shell_indices + self.num_primitive_shells), axis=0
+            ),
+        )
+        return self.from_shells(shells)
+
     def normalize(self) -> Basis:
         """Return a basis with radial normalization applied to each contraction.
 

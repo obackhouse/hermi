@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING, overload
 import numpy as np
 
 if TYPE_CHECKING:
-    from typing import Iterable
+    from typing import Iterable, Sequence
 
     from numpy import number
 
-    from hermi._typing import array
+    from hermi._typing import Comparable, array
 
 
 def _ravel_symmetric_indices(i: int, j: int) -> int:
@@ -32,11 +32,24 @@ def _unravel_symmetric_indices(index: int) -> tuple[int, int]:
     return i, j
 
 
+def _equal_elements[T: (Comparable, array[tuple[int], number])](*elements: T) -> bool:
+    """Check if all elements are equal."""
+    first = elements[0]
+    if any(isinstance(element, np.ndarray) for element in elements):
+        if not all(isinstance(element, np.ndarray) for element in elements):
+            return False
+        return all(np.array_equal(first, element) for element in elements[1:])  # type: ignore[arg-type]
+    return all(first == element for element in elements[1:])
+
+
 @dataclass(frozen=True)
 class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
     """Abstract base class for symmetry."""
 
     shape: S
+
+    def __post_init__(self) -> None:
+        self.assert_symmetric_sequence(self.shape)
 
     @overload
     def set_value[T: number](self, array: array[S, T], indices: S, value: T) -> None: ...
@@ -120,6 +133,15 @@ class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
         """
         pass
 
+    @abstractmethod
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        pass
+
 
 @dataclass(frozen=True)
 class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
@@ -191,14 +213,19 @@ class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
         for indices in itertools.product(range(self.shape[0]), range(self.shape[1])):
             yield indices, False
 
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 2:
+            raise ValueError("objects must have length 2")
+
 
 @dataclass(frozen=True)
 class SymmetryN2S2(Symmetry[tuple[int, int], tuple[slice, slice]]):
     """Symmetry for a 2D array with S2 symmetry."""
-
-    def __post_init__(self) -> None:
-        if self.shape[0] != self.shape[1]:
-            raise ValueError("shape must have equal dimensions at index 0 and 1")
 
     @overload
     def set_value[T: number](
@@ -269,9 +296,20 @@ class SymmetryN2S2(Symmetry[tuple[int, int], tuple[slice, slice]]):
         for indices in itertools.combinations_with_replacement(range(self.shape[0]), 2):
             yield indices, False
 
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 2:
+            raise ValueError("objects must have length 2")
+        if not _equal_elements(*objects):
+            raise ValueError("objects must be equal at index 0 and 1")
+
 
 @dataclass(frozen=True)
-class SymmetryN2A1(SymmetryN2S2):
+class SymmetryN2A1(SymmetryN2S1):
     """Symmetry for a 2D array with A1 symmetry."""
 
     pass
@@ -387,16 +425,19 @@ class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
         ):
             yield indices, False
 
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 4:
+            raise ValueError("objects must have length 4")
+
 
 @dataclass(frozen=True)
 class SymmetryN4S4(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]):
     """Symmetry for a 4D array with S4 symmetry."""
-
-    def __post_init__(self) -> None:
-        if len(set(self.shape[:2])) != 1:
-            raise ValueError("shape must have equal dimensions at index 0, 1")
-        if len(set(self.shape[2:])) != 1:
-            raise ValueError("shape must have equal dimensions at index 2, 3")
 
     @overload
     def set_value[T: number](
@@ -476,17 +517,27 @@ class SymmetryN4S4(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
         Yields:
             Canonical indices for the symmetry and whether their sign flips under the permutation.
         """
-        for indices in itertools.product(itertools.combinations_with_replacement(range(self.shape[0]), 2), repeat=2):
-            yield indices[0] + indices[1], False
+        for indices_ab in itertools.combinations_with_replacement(range(self.shape[0]), 2):
+            for indices_cd in itertools.combinations_with_replacement(range(self.shape[2]), 2):
+                yield indices_ab + indices_cd, False
+
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 4:
+            raise ValueError("objects must have length 4")
+        if not _equal_elements(objects[0], objects[1]):
+            raise ValueError("objects must be equal at index 0 and 1")
+        if not _equal_elements(objects[2], objects[3]):
+            raise ValueError("objects must be equal at index 2 and 3")
 
 
 @dataclass(frozen=True)
 class SymmetryN4S8(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]):
     """Symmetry for a 4D array with S8 symmetry."""
-
-    def __post_init__(self) -> None:
-        if len(set(self.shape)) != 1:
-            raise ValueError("shape must have equal dimensions at index 0, 1, 2, and 3")
 
     @overload
     def set_value[T: number](
@@ -575,3 +626,14 @@ class SymmetryN4S8(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
             itertools.combinations_with_replacement(range(self.shape[0]), 2), 2
         ):
             yield indices[0] + indices[1], False
+
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 4:
+            raise ValueError("objects must have length 4")
+        if not _equal_elements(*objects):
+            raise ValueError("objects must be equal at index 0, 1, 2, and 3")

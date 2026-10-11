@@ -21,6 +21,25 @@ def test_coulomb_against_pyscf(example_system, normalized_reference, spherical: 
     np.testing.assert_allclose(actual, reference, rtol=1e-6, atol=1e-8)
 
 
+@pytest.mark.parametrize("spherical", (False, True))
+def test_coulomb_ao_slices_match_full_array(example_system, spherical: bool) -> None:
+    """Compare sliced Coulomb integrals with slices of the full tensor."""
+    operator = Coulomb()
+    full = operator.collect(example_system.basis, spherical=spherical)
+    num_aos = full.shape[0]
+    first = slice(0, num_aos - 1)
+    last = slice(1, None)
+    ao_slices_cases = ((first,) * 4, (first, first, last, last), (first, last, first, last))
+
+    for ao_slices in ao_slices_cases:
+        actual = operator.collect(example_system.basis, ao_slices=ao_slices, spherical=spherical)
+        indices = tuple(np.arange(*ao_slice.indices(num_aos)) for ao_slice in ao_slices)
+        expected = full[np.ix_(*indices)]
+
+        assert actual.shape == expected.shape
+        np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+
+
 def test_ssss_operator_value(basis_factory) -> None:
     """Check the ssss Hermite operator matrix against the Boys value."""
     basis = basis_factory(

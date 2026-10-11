@@ -10,7 +10,7 @@ import numpy as np
 from hermi.boys import boys
 from hermi.hermite import hermite_indices, hermite_integral_recursion, hermite_operator_matrix_indices
 from hermi.operators.operator import Operator, check_views_rank
-from hermi.symmetry import SymmetryN4S1, SymmetryN4S8
+from hermi.symmetry import SymmetryN4S1, SymmetryN4S4, SymmetryN4S8
 from hermi.util import outer_powers, unreachable
 
 if TYPE_CHECKING:
@@ -53,6 +53,7 @@ class Coulomb(Operator):
         r"""Supported symmetries of the operator."""
         return (
             SymmetryN4S1,
+            SymmetryN4S4,
             SymmetryN4S8,
         )
 

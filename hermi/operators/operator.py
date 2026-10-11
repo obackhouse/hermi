@@ -13,6 +13,7 @@ from hermi.basis import ShellPairView, ShellView
 from hermi.collect import collect_integral_11, collect_integral_20, collect_integral_22
 from hermi.contract import contract_operator_11, contract_operator_20, contract_operator_22
 from hermi.expansion import Expansion
+from hermi.symmetry import SymmetryN2S1, SymmetryN2S2, SymmetryN4S1, SymmetryN4S4, SymmetryN4S8
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -299,9 +300,20 @@ class Operator(ABC):
     def collect(
         self,
         basis: Basis,
+        signature: None = None,
+        symmetry_type: type[Symmetry[Any, Any]] | None = None,
+        *,
+        ao_slices: tuple[slice, ...] | None = None,
+        spherical: bool = False,
+    ) -> array[tuple[int, ...], float64]: ...
+    @overload
+    def collect(
+        self,
+        basis: Basis,
         signature: tuple[Literal[0], Literal[1]] | tuple[Literal[1], Literal[0]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
+        ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
     ) -> array[tuple[int], float64]: ...
     @overload
@@ -311,6 +323,7 @@ class Operator(ABC):
         signature: tuple[Literal[0], Literal[2]] | tuple[Literal[2], Literal[0]] | tuple[Literal[1], Literal[1]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
+        ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
     ) -> array[tuple[int, int], float64]: ...
     @overload
@@ -320,6 +333,7 @@ class Operator(ABC):
         signature: tuple[Literal[1], Literal[2]] | tuple[Literal[2], Literal[1]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
+        ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
     ) -> array[tuple[int, int, int], float64]: ...
     @overload
@@ -329,6 +343,7 @@ class Operator(ABC):
         signature: tuple[Literal[2], Literal[2]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
+        ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
     ) -> array[tuple[int, int, int, int], float64]: ...
 
@@ -338,6 +353,7 @@ class Operator(ABC):
         signature: tuple[int, int] | None = None,
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
+        ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
     ) -> array[tuple[int, ...], float64]:
         r"""Collect contracted AO integrals for the operator.
@@ -346,6 +362,7 @@ class Operator(ABC):
             basis: Basis set to collect integrals for.
             signature: Signature of the operator to collect integrals for.
             symmetry_type: Symmetry helper class for the integral matrix.
+            ao_slices: AO slices for each integral axis in the original basis order.
             spherical: Return real spherical instead of Cartesian integrals.
 
         Returns:
@@ -353,22 +370,61 @@ class Operator(ABC):
         """
         if signature is None:
             signature = self.default_signature
-        if symmetry_type is None:
-            symmetry_type = self.default_symmetry
+        if ao_slices is None:
+            ao_slices = (slice(None),) * sum(signature)
+        elif len(ao_slices) != sum(signature):
+            raise ValueError(f"ao_slices must contain {sum(signature)} slices for signature {signature}")
 
         if signature not in self.supported_signatures:
             raise ValueError(f"operator signature {signature} not supported by operator {self.__class__.__name__}")
+
+        if symmetry_type is None:
+            num_aos = basis.num_contracted_spherical_aos if spherical else basis.num_contracted_cartesian_aos
+            selected_aos = tuple(np.arange(*ao_slice.indices(num_aos)) for ao_slice in ao_slices)
+            if signature in ((1, 1), (2, 0)):
+                symmetry_type = SymmetryN2S2 if np.array_equal(selected_aos[0], selected_aos[1]) else SymmetryN2S1
+            elif signature == (2, 2):
+                same_ao_pairs = np.array_equal(selected_aos[0], selected_aos[1]) and np.array_equal(
+                    selected_aos[2], selected_aos[3]
+                )
+                if same_ao_pairs and np.array_equal(selected_aos[0], selected_aos[2]):
+                    symmetry_type = SymmetryN4S8
+                elif same_ao_pairs:
+                    symmetry_type = SymmetryN4S4
+                else:
+                    symmetry_type = SymmetryN4S1
+            else:
+                symmetry_type = self.default_symmetry
+
         if symmetry_type not in self.supported_symmetries:
             raise ValueError(
                 f"operator symmetry {symmetry_type.__name__} not supported by operator {self.__class__.__name__}"
             )
 
         if signature == (1, 1):
-            return collect_integral_11(basis, self, symmetry_type=symmetry_type, spherical=spherical)
+            return collect_integral_11(
+                basis,
+                self,
+                ao_slices=(ao_slices[0], ao_slices[1]),
+                symmetry_type=symmetry_type,
+                spherical=spherical,
+            )
         elif signature == (2, 2):
-            return collect_integral_22(basis, self, symmetry_type=symmetry_type, spherical=spherical)
+            return collect_integral_22(
+                basis,
+                self,
+                ao_slices=(ao_slices[0], ao_slices[1], ao_slices[2], ao_slices[3]),
+                symmetry_type=symmetry_type,
+                spherical=spherical,
+            )
         elif signature == (2, 0):
-            return collect_integral_20(basis, self, symmetry_type=symmetry_type, spherical=spherical)
+            return collect_integral_20(
+                basis,
+                self,
+                ao_slices=(ao_slices[0], ao_slices[1]),
+                symmetry_type=symmetry_type,
+                spherical=spherical,
+            )
         raise NotImplementedError(f"collection for operator signature {signature} not implemented.")
 
     def __add__(self, other: object) -> Operator:

@@ -30,12 +30,26 @@ def test_kinetic_signature_20_against_pyscf(example_system, normalized_reference
     np.testing.assert_allclose(actual, reference, rtol=1e-6, atol=1e-8)
 
 
+@pytest.mark.parametrize("spherical", (False, True))
+def test_kinetic_20_ao_slices_match_full_array(example_system, spherical: bool) -> None:
+    """Compare sliced (2, 0) kinetic integrals with slices of the full matrix."""
+    operator = Kinetic()
+    full = operator.collect(example_system.basis, signature=(2, 0), spherical=spherical)
+    num_aos = full.shape[0]
+    ao_slices = (slice(0, num_aos, 2), slice(num_aos - 1, None, -2))
+
+    actual = operator.collect(example_system.basis, signature=(2, 0), ao_slices=ao_slices, spherical=spherical)
+    indices = tuple(np.arange(*ao_slice.indices(num_aos)) for ao_slice in ao_slices)
+    expected = full[np.ix_(*indices)]
+
+    assert actual.shape == expected.shape
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+
+
 def test_contracted_p_and_d_shells_against_pyscf() -> None:
     """Compare contracted Cartesian and spherical kinetic matrices against PySCF."""
     shells = Shells(
-        position=np.asarray(
-            [[0, 0, 0], [0, 0, 0], [1.3, 0, 0], [1.3, 0, 0], [0, 1.1, 0]], dtype=np.float64
-        ),
+        position=np.asarray([[0, 0, 0], [0, 0, 0], [1.3, 0, 0], [1.3, 0, 0], [0, 1.1, 0]], dtype=np.float64),
         exponent=np.asarray([0.8, 0.2, 1.1, 0.3, 0.9], dtype=np.float64),
         coefficient=np.asarray([0.35, 0.65, 0.6, 0.4, 1.0], dtype=np.float64),
         angular_momentum=np.asarray([1, 1, 0, 0, 2], dtype=np.int64),
