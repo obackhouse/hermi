@@ -1,5 +1,3 @@
-# hermi
-
 ![Hermi logo](https://raw.githubusercontent.com/obackhouse/hermi/main/assets/hermi-banner.svg)
 
 The `hermi` package implements integrals over atom-centred Gaussian basis functions for use in quantum chemistry.
