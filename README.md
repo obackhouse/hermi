@@ -1,4 +1,8 @@
-![Hermi logo](https://raw.githubusercontent.com/obackhouse/hermi/main/assets/hermi-banner.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/obackhouse/hermi/main/assets/hermi-banner-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/obackhouse/hermi/main/assets/hermi-banner.svg">
+  <img alt="hermi logo" src="https://raw.githubusercontent.com/obackhouse/hermi/main/assets/hermi-banner.svg">
+</picture>
 
 The `hermi` package implements integrals over atom-centred Gaussian basis functions for use in quantum chemistry.
 It implements a generalised McMurchie--Davidson algorithm which targets matrix operations in order to effectively vectorise the workload via NumPy calls.
