@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from hermi.operators import Kinetic, Overlap
+from hermi.operators.kinetic import Kinetic
+from hermi.operators.overlap import Overlap
 from hermi.operators.operator import OperatorSum
 
 

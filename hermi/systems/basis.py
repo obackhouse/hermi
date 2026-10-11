@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, overload
 import basis_set_exchange as bse
 import numpy as np
 
-from hermi.screening import NoScreening
-from hermi.symmetry import SymmetryN2S1, SymmetryN2S2
+from hermi.integrals.screening import NoScreening
+from hermi.integrals.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.util import DefaultHash, num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
@@ -19,8 +19,8 @@ if TYPE_CHECKING:
     from numpy import bool_, float64, int64
 
     from hermi._typing import array
-    from hermi.molecule import Molecule
-    from hermi.screening import Screening
+    from hermi.integrals.screening import Screening
+    from hermi.systems.molecule import Molecule
 
 
 @dataclass(frozen=True, eq=False, slots=True)

@@ -5,9 +5,9 @@ from __future__ import annotations
 import numpy as np
 from pyscf import gto
 
-from hermi.basis import Basis, Shells
-from hermi.molecule import Element, Molecule
-from hermi.operators import Overlap
+from hermi.systems.basis import Basis, Shells
+from hermi.systems.molecule import Element, Molecule
+from hermi.operators.overlap import Overlap
 from hermi.util import cartesian_normalization
 
 

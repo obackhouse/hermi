@@ -7,23 +7,23 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from hermi.expansion import Expansion
-from hermi.hermite import (
+from hermi.integrals.expansion import Expansion
+from hermi.integrals.hermite import (
     hermite_indices,
     hermite_integral_recursion_zero_order,
     hermite_operator_matrix_indices,
 )
+from hermi.integrals.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.operators.operator import Operator, check_views_rank
-from hermi.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.util import unreachable
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from hermi.basis import ShellPairView, ShellView
-    from hermi.expansion import ExpansionMatrix
+    from hermi.integrals.expansion import ExpansionMatrix
+    from hermi.integrals.symmetry import Symmetry
     from hermi.operators.operator import OperatorMatrix, View
-    from hermi.symmetry import Symmetry
+    from hermi.systems.basis import ShellPairView, ShellView
 
 
 @dataclass(frozen=True)

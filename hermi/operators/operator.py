@@ -9,11 +9,15 @@ from typing import TYPE_CHECKING, overload
 
 import numpy as np
 
-from hermi.basis import ShellPairView, ShellView
-from hermi.collect import collect_integral_11, collect_integral_12, collect_integral_20, collect_integral_22
-from hermi.contract import contract_operator_11, contract_operator_12, contract_operator_20, contract_operator_22
-from hermi.expansion import Expansion
-from hermi.symmetry import (
+from hermi.integrals.collect import collect_integral_11, collect_integral_12, collect_integral_20, collect_integral_22
+from hermi.integrals.contract import (
+    contract_operator_11,
+    contract_operator_12,
+    contract_operator_20,
+    contract_operator_22,
+)
+from hermi.integrals.expansion import Expansion
+from hermi.integrals.symmetry import (
     SymmetryN2S1,
     SymmetryN2S2,
     SymmetryN3S1,
@@ -22,6 +26,7 @@ from hermi.symmetry import (
     SymmetryN4S4,
     SymmetryN4S8,
 )
+from hermi.systems.basis import ShellPairView, ShellView
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -30,9 +35,9 @@ if TYPE_CHECKING:
     from typing_extensions import TypeIs
 
     from hermi._typing import array
-    from hermi.basis import Basis
-    from hermi.expansion import ExpansionMatrix
-    from hermi.symmetry import Symmetry
+    from hermi.integrals.expansion import ExpansionMatrix
+    from hermi.integrals.symmetry import Symmetry
+    from hermi.systems.basis import Basis
 
     type OperatorMatrix = array[tuple[int, int, int, int], float64] | array[tuple[int, int, int, int, int], float64]
     type View = None | ShellView | ShellPairView

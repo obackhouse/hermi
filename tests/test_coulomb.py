@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 from pyscf import gto
 
-from hermi.basis import Basis, Shells
-from hermi.boys import boys
-from hermi.operators import Coulomb
+from hermi.systems.basis import Basis, Shells
+from hermi.integrals.boys import boys
+from hermi.operators.coulomb import Coulomb
 
 
 @pytest.mark.parametrize("spherical, suffix", ((False, "cart"), (True, "sph")))

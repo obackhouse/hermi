@@ -7,7 +7,7 @@ import pytest
 from pyscf import df, gto
 
 from hermi.algorithms.density_fitting import density_fit
-from hermi.basis import Basis
+from hermi.systems.basis import Basis
 
 
 @pytest.mark.parametrize("spherical", (False, True))

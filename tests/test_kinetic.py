@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 from pyscf import gto
 
-from hermi.basis import Basis, Shells
-from hermi.operators import Kinetic
+from hermi.systems.basis import Basis, Shells
+from hermi.operators.kinetic import Kinetic
 
 
 @pytest.mark.parametrize("spherical, suffix", ((False, "cart"), (True, "sph")))

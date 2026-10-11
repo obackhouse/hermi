@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hermi.operators import Overlap
+from hermi.operators.overlap import Overlap
 
 
 @pytest.mark.parametrize("spherical, suffix", ((False, "cart"), (True, "sph")))

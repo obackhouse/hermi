@@ -24,7 +24,7 @@ dev = [
 ]
 
 [tool.setuptools.package-data]
-hermi = ["periodic_table.json"]
+"hermi.systems" = ["periodic_table.json"]
 
 [tool.ruff]
 line-length = 120

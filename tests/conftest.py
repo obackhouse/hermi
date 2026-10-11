@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 from pyscf import gto
 
-from hermi.basis import Basis, Shells
-from hermi.molecule import Molecule
+from hermi.systems.basis import Basis, Shells
+from hermi.systems.molecule import Molecule
 
 
 def _make_basis(

@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.special import erf
 
-from hermi.boys import boys
-from hermi.expansion import Expansion
+from hermi.integrals.boys import boys
+from hermi.integrals.expansion import Expansion
 
 
 def test_expansion_for_p_s_pair(basis_factory) -> None:

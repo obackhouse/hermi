@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from hermi.boys import boys
-from hermi.hermite import hermite_indices, hermite_integral_recursion, hermite_operator_matrix_indices
-from hermi.operators.operator import Operator, check_views_rank
-from hermi.symmetry import (
+from hermi.integrals.boys import boys
+from hermi.integrals.hermite import hermite_indices, hermite_integral_recursion, hermite_operator_matrix_indices
+from hermi.integrals.symmetry import (
     SymmetryN2S1,
     SymmetryN2S2,
     SymmetryN3S1,
@@ -19,14 +18,15 @@ from hermi.symmetry import (
     SymmetryN4S4,
     SymmetryN4S8,
 )
+from hermi.operators.operator import Operator, check_views_rank
 from hermi.util import outer_powers, unreachable
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from hermi.basis import ShellPairView, ShellView
+    from hermi.integrals.symmetry import Symmetry
     from hermi.operators.operator import OperatorMatrix, View
-    from hermi.symmetry import Symmetry
+    from hermi.systems.basis import ShellPairView, ShellView
 
 
 @dataclass(frozen=True)

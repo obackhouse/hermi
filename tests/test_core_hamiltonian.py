@@ -5,7 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hermi.operators import CoreHamiltonian, Kinetic, Nuclear
+from hermi.operators.composite import CoreHamiltonian
+from hermi.operators.kinetic import Kinetic
+from hermi.operators.nuclear import Nuclear
 
 
 @pytest.mark.parametrize("spherical, suffix", ((False, "cart"), (True, "sph")))

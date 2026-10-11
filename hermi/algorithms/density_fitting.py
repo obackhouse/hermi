@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from numpy import float64
 
     from hermi._typing import array
-    from hermi.basis import Basis
+    from hermi.systems.basis import Basis
 
 
 def _decompose_potential(

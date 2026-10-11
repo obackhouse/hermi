@@ -12,7 +12,7 @@ from hermi.operators.operator import OperatorSum
 if TYPE_CHECKING:
     from dataclasses import InitVar
 
-    from hermi.molecule import Molecule
+    from hermi.systems.molecule import Molecule
 
 
 @dataclass(frozen=True)

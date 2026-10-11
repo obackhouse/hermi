@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hermi.operators import Nuclear
+from hermi.operators.nuclear import Nuclear
 
 
 @pytest.mark.parametrize("spherical, suffix", ((False, "cart"), (True, "sph")))
