@@ -7,7 +7,10 @@ import pytest
 from pyscf import df, gto
 
 from hermi.algorithms.density_fitting import density_fit
+from hermi.algorithms.tensor_hypercontraction import tensor_hypercontraction
 from hermi.systems.basis import Basis
+from hermi.systems.grid import MolecularGrid
+from hermi.systems.molecule import Molecule
 
 
 @pytest.mark.parametrize("spherical", (False, True))
@@ -41,3 +44,30 @@ def test_density_fit_against_pyscf(example_system, spherical: bool) -> None:
 
     assert actual.shape == expected.shape
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-8)
+
+
+@pytest.mark.parametrize("spherical", (False, True))
+def test_tensor_hypercontraction_against_pyscf(spherical: bool) -> None:
+    """Compare THC integrals against raw PySCF electron-repulsion integrals."""
+    molecule = Molecule.from_list(["H", "H"], [[0, 0, 0], [0, 0, 1.4]], units="bohr")
+    ao_basis = Basis.from_molecule(molecule, "sto-3g")
+    aux_basis = Basis.from_molecule(molecule, "def2-universal-jfit")
+    grid = MolecularGrid.from_molecule(molecule, radial_order=16, angular_order=6)
+
+    collocation, kernel = tensor_hypercontraction(ao_basis, aux_basis, grid, spherical=spherical)
+    actual = np.einsum(
+        "Ki,Kj,KL,Lk,Ll->ijkl", collocation, collocation, kernel, collocation, collocation, optimize=True
+    )
+
+    reference_molecule = gto.M(
+        atom=[("H", (0, 0, 0)), ("H", (0, 0, 1.4))],
+        basis="sto-3g",
+        unit="Bohr",
+        cart=not spherical,
+        verbose=0,
+    )
+    suffix = "sph" if spherical else "cart"
+    expected = reference_molecule.intor(f"int2e_{suffix}", aosym="s1")
+
+    assert actual.shape == expected.shape
+    np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-6)
