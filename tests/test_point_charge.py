@@ -87,17 +87,21 @@ def test_point_charge_s_primitive() -> None:
 
 @pytest.mark.parametrize("spherical", (False, True))
 def test_point_charge_against_quadrature(example_system, spherical: bool) -> None:
-    """Compare point-charge integrals with independent radial and angular quadrature."""
-    position = example_system.basis.shells.position[0] + np.asarray([0.02, -0.03, 0.04], dtype=np.float64)
-    operator = PointCharge(position)
+    """Compare batched point-charge integrals with independent radial and angular quadrature."""
+    center = example_system.basis.shells.position[0]
+    offsets = np.asarray([[0.02, -0.03, 0.04], [-0.05, 0.01, 0.03]], dtype=np.float64)
+    positions = center + offsets
+    operator = PointCharge(positions)
 
-    actual = operator.collect(example_system.basis, spherical=spherical)
-    reference = _quadrature_reference(example_system.basis, position, spherical=spherical)
+    actual = operator.collect(example_system.basis, spherical=spherical, batch_dim=True)
+    reference = np.stack(
+        [_quadrature_reference(example_system.basis, position, spherical=spherical) for position in positions]
+    )
 
     assert actual.shape == reference.shape
     np.testing.assert_allclose(actual, reference, rtol=2e-7, atol=2e-9)
 
     ao_slice = slice(None, None, 2)
-    sliced = operator.collect(example_system.basis, ao_slices=(ao_slice,), spherical=spherical)
-    indices = np.arange(*ao_slice.indices(actual.size))
-    np.testing.assert_allclose(sliced, actual[indices], rtol=1e-12, atol=1e-12)
+    sliced = operator.collect(example_system.basis, ao_slices=(ao_slice,), spherical=spherical, batch_dim=True)
+    indices = np.arange(*ao_slice.indices(actual.shape[1]))
+    np.testing.assert_allclose(sliced, actual[:, indices], rtol=1e-12, atol=1e-12)

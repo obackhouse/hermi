@@ -32,7 +32,7 @@ class PointCharge(Operator):
         \hat{O} = \frac{1}{|r - r_x|}.
     """
 
-    position: array[tuple[int], float64]
+    position: array[tuple[int], float64] | array[tuple[int, int], float64]
 
     def get_default_signature(
         self,
@@ -57,10 +57,17 @@ class PointCharge(Operator):
         shell = views[0]
         max_order = shell.angular_momentum
         exponent = shell.exponent
-        displacement = shell.position - self.position
+        batched = self.position.ndim == 2
+        auxiliary_shape: tuple[int, ...]
+        if batched:
+            displacement = shell.position[None, ...] - self.position[:, None, :]
+            auxiliary_shape = (max_order + 1,) * 4 + (self.position.shape[0], len(shell))
+        else:
+            displacement = shell.position - self.position
+            auxiliary_shape = (max_order + 1,) * 4 + (len(shell),)
         argument = exponent * np.einsum("...x,...x->...", displacement, displacement, optimize=True)
 
-        auxiliary = np.zeros((max_order + 1,) * 4 + (len(shell),), dtype=np.float64)
+        auxiliary = np.zeros(auxiliary_shape, dtype=np.float64)
 
         # Fundamental value
         fundamental = np.moveaxis(outer_powers(-2 * exponent, max_order) * boys(argument, max_order), -1, 0)
@@ -80,7 +87,7 @@ class PointCharge(Operator):
         # Construct operator matrix
         indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
         zero_order = np.moveaxis(auxiliary[*indices, 0], 0, -1)
-        operator = np.expand_dims(zero_order, axis=(1, 3))
+        operator = np.expand_dims(zero_order, axis=(2, 4) if batched else (1, 3))
 
         return operator
 
@@ -91,7 +98,8 @@ class PointCharge(Operator):
             views: Views of the shells to compute the operator matrix for.
 
         Returns:
-            Hermite operator matrix. Shape is ``(n_primitive, 1, n_hermite, 1)``.
+            Hermite operator matrix with shape ``(n_primitive, 1, n_hermite, 1)`` or
+            ``(n_positions, n_primitive, 1, n_hermite, 1)`` for batched positions.
         """
         if check_views_rank(views, (1, 0)):
             return self._get_operator_matrix_10(views)

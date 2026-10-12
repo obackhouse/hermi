@@ -134,8 +134,6 @@ def collect_integral_10(
 
     # Get the symmetry helper
     symmetry = symmetry_type((len(shells),))
-    if symmetry.rank != len(ao_slices):
-        raise ValueError("symmetry rank must be 1 for (1, 0) integrals")
     symmetry.assert_symmetric_sequence([selected_original.tolist()])
 
     # Compute matrix blocks
@@ -253,8 +251,6 @@ def collect_integral_12(
 
     # Get the symmetry helper
     symmetry = symmetry_type((len(shells[0]), len(shells[1]), len(shells[2])))
-    if symmetry.rank != len(ao_slices):
-        raise ValueError(f"symmetry rank must be {len(ao_slices)} for (1, 2) integrals")
     symmetry.assert_symmetric_sequence([selection.tolist() for selection in selected_original])
     pair_symmetry = SymmetryN2S1((len(shell_groups), len(shell_groups)))
     shell_group_indices = {shell.indices.start: index for index, shell in enumerate(shell_groups)}
@@ -427,5 +423,59 @@ def collect_integral_22(
 
     # Reorder the matrix back to the original basis order
     matrix = matrix[np.ix_(*restore)]
+
+    return matrix
+
+
+def collect_batched_integral_10(
+    basis: Basis,
+    operator: Operator,
+    *,
+    ao_slices: tuple[slice] = (slice(None),),
+    symmetry_type: type[Symmetry[tuple[int], tuple[slice]]] | None = None,
+    spherical: bool = False,
+) -> array[tuple[int, int], float64]:
+    """Collect contracted AO integrals for a batched (1, 0) integral.
+
+    Args:
+        basis: Basis set.
+        operator: Batched operator to collect integrals for with (1, 0) signature.
+        ao_slices: AO slices for the single-function axis in the original basis order.
+        symmetry_type: Symmetry helper class for the integral vector.
+        spherical: Return real spherical instead of Cartesian integrals.
+
+    Returns:
+        Contracted Cartesian or real spherical AO integrals with a leading batch dimension.
+    """
+    num_aos = basis.num_contracted_spherical_aos if spherical else basis.num_contracted_cartesian_aos
+
+    # Order the basis set to make equal angular momentum shells contiguous
+    basis, indices = basis.ordered_by_angular_momentum(spherical=spherical)
+
+    # Get AO selections
+    selected_original, selected_ordered, restore = _get_ao_selection(ao_slices[0], indices, num_aos)
+    if symmetry_type is None:
+        symmetry_type = SymmetryN1S1
+
+    # Get selected shell groups and AO slices
+    shells = _get_selected_shell_groups(basis.iter_shell_groups(), selected_ordered, spherical=spherical)
+
+    # Get the symmetry helper
+    symmetry = symmetry_type((len(shells),))
+    symmetry.assert_symmetric_sequence([selected_original.tolist()])
+
+    # Compute matrix blocks
+    matrix = np.zeros((1, len(selected_ordered)), dtype=np.float64)
+    for (a,), _ in symmetry.canonical_indices():
+        shell_a, i, indices_a = shells[a]
+        block = operator.contract((shell_a, None), spherical=spherical, batch_dim=True)
+        if matrix.shape[0] == 1 and block.shape[0] != 1:
+            # Use the first block to determine the batch size and expand the matrix accordingly
+            matrix = np.repeat(matrix, block.shape[0], axis=0)
+        block = block[:, indices_a]
+        symmetry.set_value(matrix, (i,), block)
+
+    # Reorder the matrix back to the original basis order
+    matrix = matrix[:, restore]
 
     return matrix
