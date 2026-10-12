@@ -174,9 +174,8 @@ def tensor_hypercontraction(
         dense_overlap = dense_values @ collocation.T
         pair_overlap = dense_overlap**2
 
-        point_potentials = np.asarray(
-            [PointCharge(position).collect(aux_basis, spherical=spherical) for position in grid.points[block]]
-        )
+        point_charge = PointCharge(grid.points[block])
+        point_potentials = point_charge.collect(aux_basis, spherical=spherical, batch_dim=True)
         half_kernel = point_potentials @ metric_inverse_sqrt.T
         right_hand_side += pair_overlap.T @ half_kernel
 
