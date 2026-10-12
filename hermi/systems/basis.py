@@ -11,6 +11,7 @@ import numpy as np
 
 from hermi.integrals.screening import NoScreening
 from hermi.integrals.symmetry import SymmetryN2S1, SymmetryN2S2
+from hermi.systems.evaluate import evaluate_basis
 from hermi.util import DefaultHash, num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
@@ -248,6 +249,25 @@ class Basis(DefaultHash):
             shell_indices=self.shells.shell_indices.copy(),
         )
         return self.from_shells(shells)
+
+    def evaluate(
+        self,
+        points: array[tuple[int, int], float64],
+        *,
+        ao_slice: slice = slice(None),
+        spherical: bool = False,
+    ) -> array[tuple[int, int], float64]:
+        """Evaluate contracted basis functions at points.
+
+        Args:
+            points: Cartesian coordinates of the points.
+            ao_slice: AO slice in the original basis order.
+            spherical: Evaluate real spherical instead of Cartesian functions.
+
+        Returns:
+            Basis function values on the points.
+        """
+        return evaluate_basis(self, points, ao_slice=ao_slice, spherical=spherical)
 
     @property
     def num_primitive_shells(self) -> int:
