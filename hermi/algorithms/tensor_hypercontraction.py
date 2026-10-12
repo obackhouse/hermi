@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from hermi._typing import array
     from hermi.systems.basis import Basis
 
-BLOCK_SIZE = 1024
+BLOCK_SIZE = 2048
 HILBERT_BITS = 16
 
 
@@ -65,16 +65,11 @@ def _hilbert_argsort(points: array[tuple[int, int], float64], bits: int) -> arra
 
 
 def _grid_pivots(
-    basis: Basis,
-    points: array[tuple[int, int], float64],
-    weights: array[tuple[int], float64],
+    values: array[tuple[int, int], float64],
     *,
-    spherical: bool,
     tolerance: float,
 ) -> array[tuple[int], np.int64]:
     """Select representative grid points using pivoted Cholesky decomposition."""
-    values = basis.evaluate(points, spherical=spherical)
-    values *= np.expand_dims(np.sqrt(weights), axis=1)
     overlap = values @ values.T
     pair_overlap = np.ascontiguousarray(overlap**2)
     _, pivots, rank, _ = dpstrf(pair_overlap, tol=tolerance)
@@ -82,39 +77,30 @@ def _grid_pivots(
 
 
 def _select_grid_points(
-    basis: Basis,
-    points: array[tuple[int, int], float64],
-    weights: array[tuple[int], float64],
+    values: array[tuple[int, int], float64],
+    order: array[tuple[int], np.int64],
     *,
-    spherical: bool,
     block_size: int,
-    hilbert_bits: int,
     cholesky_tolerance: float,
-) -> tuple[array[tuple[int, int], float64], array[tuple[int], float64]]:
-    """Hilbert-sort and iteratively prune a dense grid."""
-    order = _hilbert_argsort(points, hilbert_bits)
-    points = points[order]
-    weights = weights[order]
+) -> array[tuple[int], np.int64]:
+    """Return indices of representative points in an iteratively pruned grid."""
+    selected = order
 
     while True:
         pivots = [
             _grid_pivots(
-                basis,
-                points[block],
-                weights[block],
-                spherical=spherical,
+                values[selected[block]],
                 tolerance=cholesky_tolerance,
             )
             + block.start
-            for block in iter_slices(0, points.shape[0], block_size)
+            for block in iter_slices(0, selected.size, block_size)
         ]
         indices = np.sort(np.concatenate(pivots))
-        if indices.size == points.shape[0]:
+        if indices.size == selected.size:
             break
-        points = points[indices]
-        weights = weights[indices]
+        selected = selected[indices]
 
-    return points, weights
+    return selected
 
 
 def tensor_hypercontraction(
@@ -145,17 +131,21 @@ def tensor_hypercontraction(
     Returns:
         The collocation matrix and Coulomb kernel matrix for the tensor hypercontraction factorisation.
     """
-    sparse_points, sparse_weights = _select_grid_points(
-        ao_basis,
-        grid.points,
-        grid.weights,
-        spherical=spherical,
+    num_aos = ao_basis.num_contracted_spherical_aos if spherical else ao_basis.num_contracted_cartesian_aos
+    dense_values = np.empty((len(grid), num_aos), dtype=np.float64)
+    for block in iter_slices(0, len(grid), block_size):
+        dense_values[block] = ao_basis.evaluate(grid.points[block], spherical=spherical)
+        dense_values[block] *= np.expand_dims(np.sqrt(grid.weights[block]), axis=1)
+
+    dense_order = _hilbert_argsort(grid.points, hilbert_bits)
+    selected = _select_grid_points(
+        dense_values,
+        dense_order,
         block_size=block_size,
-        hilbert_bits=hilbert_bits,
         cholesky_tolerance=cholesky_tolerance,
     )
-    collocation = ao_basis.evaluate(sparse_points, spherical=spherical)
-    collocation *= np.expand_dims(np.sqrt(sparse_weights), axis=1)
+    sparse_points = grid.points[selected]
+    collocation = dense_values[selected]
 
     coulomb = Coulomb()
     metric = coulomb.collect(aux_basis, (1, 1), spherical=spherical)
@@ -169,9 +159,7 @@ def tensor_hypercontraction(
     sparse_gram += regularization * np.eye(sparse_gram.shape[0])
 
     for block in iter_slices(0, len(grid), block_size):
-        dense_values = ao_basis.evaluate(grid.points[block], spherical=spherical)
-        dense_values *= np.expand_dims(np.sqrt(grid.weights[block]), axis=1)
-        dense_overlap = dense_values @ collocation.T
+        dense_overlap = dense_values[block] @ collocation.T
         pair_overlap = dense_overlap**2
 
         point_charge = PointCharge(grid.points[block])
