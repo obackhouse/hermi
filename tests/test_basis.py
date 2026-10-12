@@ -8,7 +8,7 @@ from pyscf import gto
 from hermi.systems.basis import Basis, Shells
 from hermi.systems.molecule import Element, Molecule
 from hermi.operators.overlap import Overlap
-from hermi.util import cartesian_normalization
+from hermi.utils.angular import cartesian_normalization
 
 
 def test_from_molecule_repeats_basis_data_for_each_atom() -> None:

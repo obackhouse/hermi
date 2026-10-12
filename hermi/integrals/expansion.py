@@ -12,7 +12,7 @@ import numpy as np
 
 from hermi.integrals.hermite import hermite_indices
 from hermi.systems.basis import ShellPairView, ShellView
-from hermi.util import cartesian_indices, cartesian_normalization, cartesian_to_spherical
+from hermi.utils.angular import cartesian_indices, cartesian_normalization, cartesian_to_spherical
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

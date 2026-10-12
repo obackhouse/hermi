@@ -19,7 +19,8 @@ from hermi.integrals.symmetry import (
     SymmetryN4S8,
 )
 from hermi.operators.operator import Operator, check_views_rank
-from hermi.util import outer_powers, unreachable
+from hermi.utils.linear_algebra import outer_powers
+from hermi.utils.misc import unreachable
 
 if TYPE_CHECKING:
     from typing import Any

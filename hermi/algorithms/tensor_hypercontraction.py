@@ -10,7 +10,7 @@ from scipy.linalg.lapack import dpstrf
 from hermi.operators.coulomb import Coulomb
 from hermi.operators.point_charge import PointCharge
 from hermi.systems.grid import MolecularGrid
-from hermi.util import iter_slices
+from hermi.utils.slices import iter_slices
 
 if TYPE_CHECKING:
     from numpy import float64

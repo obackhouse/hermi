@@ -15,7 +15,7 @@ from hermi.integrals.hermite import (
 )
 from hermi.integrals.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.operators.operator import Operator, check_views_rank
-from hermi.util import unreachable
+from hermi.utils.misc import unreachable
 
 if TYPE_CHECKING:
     from typing import Any

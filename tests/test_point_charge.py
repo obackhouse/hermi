@@ -8,7 +8,7 @@ from scipy.special import erf
 
 from hermi.operators.point_charge import PointCharge
 from hermi.systems.basis import Basis, Shells
-from hermi.util import cartesian_indices, cartesian_normalization, cartesian_to_spherical
+from hermi.utils.angular import cartesian_indices, cartesian_normalization, cartesian_to_spherical
 
 
 def _quadrature_reference(basis: Basis, position: np.ndarray, *, spherical: bool) -> np.ndarray:

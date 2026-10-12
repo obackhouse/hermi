@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy import constants
 
-from hermi.util import DefaultHash
+from hermi.utils.misc import DefaultHash
 
 ANGSTROM_TO_BOHR = 1e-10 / constants.value("Bohr radius")
 

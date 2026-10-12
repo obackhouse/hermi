@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.special import logsumexp
 
-from hermi.util import DefaultHash
+from hermi.utils.misc import DefaultHash
 
 if TYPE_CHECKING:
     from numpy import float64

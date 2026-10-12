@@ -1,4 +1,4 @@
-"""Utilities."""
+"""Cartesian and spherical basis functions."""
 
 from __future__ import annotations
 
@@ -10,72 +10,11 @@ import numpy as np
 from scipy.special import lpmv
 
 if TYPE_CHECKING:
-    from typing import Any, Generator, Never
-
-    from numpy import float64, int64
-
     from hermi._typing import array
 
 
-class DefaultHash:
-    """Base class for objects with the default ``object.__hash__`` and ``object.__eq__``."""
-
-    __slots__ = ()
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, DefaultHash):
-            return NotImplemented
-        return object.__eq__(self, other)
-
-    def __hash__(self) -> int:
-        return object.__hash__(self)
-
-
-def update_if_missing(d: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-    """Update a dictionary with new key-value pairs if the keys are not already present.
-
-    Args:
-        d: Dictionary to update.
-        kwargs: Key-value pairs to add to the dictionary.
-
-    Returns:
-        Updated dictionary with new key-value pairs added if the keys were not already present.
-    """
-    out = d.copy()
-    for key, value in kwargs.items():
-        if key not in out:
-            out[key] = value
-    return out
-
-
-def outer_powers(
-    base: array[tuple[int, ...], float64],
-    max_order: int,
-) -> array[tuple[int, ...], float64]:
-    """Compute consecutive integer powers of each base value, optionally scaled.
-
-    Args:
-        base: Values whose powers to compute.
-        max_order: Largest nonnegative integer power.
-
-    Returns:
-        Consecutive powers from zero through ``max_order``.
-    """
-    if max_order < 0:
-        raise ValueError("max_order must be nonnegative")
-    elif max_order == 0:
-        return np.ones((*base.shape, 1), dtype=np.float64)
-    elif max_order == 1:
-        return np.stack((np.ones_like(base), base), axis=-1)
-    powers = np.ones((*base.shape, max_order + 1), dtype=np.float64)
-    powers[..., 1] = base
-    for order in range(2, max_order + 1):
-        powers[..., order] = powers[..., order - 1] * base
-    return powers
-
-
 @lru_cache(maxsize=None)
-def cartesian_indices(angular_momentum: int) -> array[tuple[int, int], int64]:
+def cartesian_indices(angular_momentum: int) -> array[tuple[int, int], np.int64]:
     """Return Cartesian indices in lexicographic order."""
     return np.asarray(
         [
@@ -88,7 +27,7 @@ def cartesian_indices(angular_momentum: int) -> array[tuple[int, int], int64]:
 
 
 @lru_cache(maxsize=None)
-def cartesian_to_spherical(angular_momentum: int) -> array[tuple[int, int], float64]:
+def cartesian_to_spherical(angular_momentum: int) -> array[tuple[int, int], np.float64]:
     """Return the normalized Cartesian-to-real-spherical transformation."""
     if angular_momentum < 0:
         raise ValueError("angular_momentum must be nonnegative")
@@ -137,26 +76,30 @@ def cartesian_to_spherical(angular_momentum: int) -> array[tuple[int, int], floa
 
 @overload
 def num_cartesian_functions(angular_momentum: int) -> int: ...
+
+
 @overload
-def num_cartesian_functions[S: tuple[int, ...]](angular_momentum: array[S, int64]) -> array[S, int64]: ...
+def num_cartesian_functions[S: tuple[int, ...]](angular_momentum: array[S, np.int64]) -> array[S, np.int64]: ...
 
 
 def num_cartesian_functions(
-    angular_momentum: int | array[tuple[int, ...], int64],
-) -> int | array[tuple[int, ...], int64]:
+    angular_momentum: int | array[tuple[int, ...], np.int64],
+) -> int | array[tuple[int, ...], np.int64]:
     """Return the number of Cartesian functions for a given angular momentum."""
     return (angular_momentum + 1) * (angular_momentum + 2) // 2
 
 
 @overload
 def num_spherical_functions(angular_momentum: int) -> int: ...
+
+
 @overload
-def num_spherical_functions[S: tuple[int, ...]](angular_momentum: array[S, int64]) -> array[S, int64]: ...
+def num_spherical_functions[S: tuple[int, ...]](angular_momentum: array[S, np.int64]) -> array[S, np.int64]: ...
 
 
 def num_spherical_functions(
-    angular_momentum: int | array[tuple[int, ...], int64],
-) -> int | array[tuple[int, ...], int64]:
+    angular_momentum: int | array[tuple[int, ...], np.int64],
+) -> int | array[tuple[int, ...], np.int64]:
     """Return the number of real spherical functions for an angular momentum."""
     return 2 * angular_momentum + 1
 
@@ -169,38 +112,3 @@ def cartesian_normalization(angular_momentum: int) -> array[tuple[int], np.float
         denominator = prod(prod(range(2 * int(power) - 1, 0, -2)) for power in triple)
         factors.append(1.0 / np.sqrt(denominator))
     return np.asarray(factors, dtype=np.float64)
-
-
-def rebase_slice(source: slice, target: slice) -> slice:
-    """Rebase a source slice to a target slice.
-
-    Args:
-        source: Slice to rebase.
-        target: Slice to rebase onto.
-
-    Returns:
-        Rebasing of the source slice onto the target slice.
-    """
-    start = source.start - target.start if source.start is not None else None
-    stop = source.stop - target.start if source.stop is not None else None
-    return slice(start, stop, source.step)
-
-
-def iter_slices(start: int, stop: int, step: int) -> Generator[slice]:
-    """Iterate over slices of a given step size.
-
-    Args:
-        start: Start index.
-        stop: Stop index.
-        step: Step size.
-
-    Yields:
-        Tuples of (start, stop) indices for each slice.
-    """
-    for i in range(start, stop, step):
-        yield slice(i, min(i + step, stop))
-
-
-def unreachable() -> Never:
-    """Raise an error indicating that the code is unreachable."""
-    raise AssertionError("unreachable code, this should never happen")

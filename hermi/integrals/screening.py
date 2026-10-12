@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from hermi._typing import array
     from hermi.systems.basis import Basis, ShellPairView, ShellView
 
-from hermi.util import num_cartesian_functions, num_spherical_functions
+from hermi.utils.angular import num_cartesian_functions, num_spherical_functions
 
 
 class Screening[N: Literal[1, 2, 3, 4]](ABC):

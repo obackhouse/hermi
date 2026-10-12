@@ -11,7 +11,8 @@ from hermi.integrals.boys import boys
 from hermi.integrals.hermite import hermite_indices, hermite_integral_recursion
 from hermi.integrals.symmetry import SymmetryN1S1
 from hermi.operators.operator import Operator, check_views_rank
-from hermi.util import outer_powers, unreachable
+from hermi.utils.linear_algebra import outer_powers
+from hermi.utils.misc import unreachable
 
 if TYPE_CHECKING:
     from numpy import float64

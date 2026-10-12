@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal, overload
 import numpy as np
 
 from hermi.integrals.expansion import Expansion
-from hermi.util import num_cartesian_functions, num_spherical_functions
+from hermi.utils.angular import num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
     from numpy import float64
