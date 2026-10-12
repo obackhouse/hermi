@@ -9,8 +9,16 @@ from typing import TYPE_CHECKING, overload
 
 import numpy as np
 
-from hermi.integrals.collect import collect_integral_11, collect_integral_12, collect_integral_20, collect_integral_22
+from hermi.integrals.collect import (
+    collect_batched_integral_10,
+    collect_integral_10,
+    collect_integral_11,
+    collect_integral_12,
+    collect_integral_20,
+    collect_integral_22,
+)
 from hermi.integrals.contract import (
+    contract_operator_10,
     contract_operator_11,
     contract_operator_12,
     contract_operator_20,
@@ -250,43 +258,57 @@ class Operator(ABC):
     @overload
     def contract(
         self,
-        views: tuple[ShellView, None],
+        views: tuple[ShellView, None] | tuple[None, ShellView],
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int], float64]: ...
     @overload
     def contract(
         self,
-        views: tuple[None, ShellView],
+        views: tuple[ShellView, None] | tuple[None, ShellView],
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
-    ) -> array[tuple[int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellView, ShellView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
+        batch_dim: Literal[True],
     ) -> array[tuple[int, int], float64]: ...
     @overload
     def contract(
         self,
-        views: tuple[ShellPairView, None],
+        views: tuple[ShellView, None] | tuple[None, ShellView],
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
+        batch_dim: bool,
+    ) -> array[tuple[int], float64] | array[tuple[int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellView, ShellView] | tuple[ShellPairView, None] | tuple[None, ShellPairView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int], float64]: ...
     @overload
     def contract(
         self,
-        views: tuple[None, ShellPairView],
+        views: tuple[ShellView, ShellView] | tuple[ShellPairView, None] | tuple[None, ShellPairView],
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
-    ) -> array[tuple[int, int], float64]: ...
+        batch_dim: Literal[True],
+    ) -> array[tuple[int, int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellView, ShellView] | tuple[ShellPairView, None] | tuple[None, ShellPairView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: bool,
+    ) -> array[tuple[int, int], float64] | array[tuple[int, int, int], float64]: ...
     @overload
     def contract(
         self,
@@ -294,7 +316,26 @@ class Operator(ABC):
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellView, ShellPairView] | tuple[ShellPairView, ShellView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: Literal[True],
+    ) -> array[tuple[int, int, int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellView, ShellPairView] | tuple[ShellPairView, ShellView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: bool,
+    ) -> array[tuple[int, int, int], float64] | array[tuple[int, int, int, int], float64]: ...
     @overload
     def contract(
         self,
@@ -302,7 +343,26 @@ class Operator(ABC):
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int, int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellPairView, ShellPairView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: Literal[True],
+    ) -> array[tuple[int, int, int, int, int], float64]: ...
+    @overload
+    def contract(
+        self,
+        views: tuple[ShellPairView, ShellPairView],
+        operator: OperatorMatrix | None = None,
+        *,
+        spherical: bool = False,
+        batch_dim: bool,
+    ) -> array[tuple[int, int, int, int], float64] | array[tuple[int, int, int, int, int], float64]: ...
 
     def contract(
         self,
@@ -311,6 +371,7 @@ class Operator(ABC):
         expansion: tuple[ExpansionMatrix | None, ExpansionMatrix | None] | None = None,
         *,
         spherical: bool = False,
+        batch_dim: bool = False,
     ) -> array[tuple[int, ...], float64]:
         r"""Contract the operator matrix with the expansion coefficients and reduce primitives.
 
@@ -319,6 +380,7 @@ class Operator(ABC):
             operator: Operator matrix to contract.
             expansion: Expansion matrices to contract.
             spherical: Return real spherical instead of Cartesian integrals.
+            batch_dim: Preserve the batch dimension in the output matrix.
 
         Returns:
             Contracted operator matrix.
@@ -328,14 +390,16 @@ class Operator(ABC):
         if expansion is None:
             expansion = self.get_expansion_matrices(views, spherical=spherical)
 
-        if check_views_rank(views, (1, 1)):
-            return contract_operator_11(operator, *views, *expansion, spherical=spherical)
+        if check_views_rank(views, (1, 0)):
+            return contract_operator_10(operator, views[0], expansion[0], spherical=spherical, batch_dim=batch_dim)
+        elif check_views_rank(views, (1, 1)):
+            return contract_operator_11(operator, *views, *expansion, spherical=spherical, batch_dim=batch_dim)
         elif check_views_rank(views, (1, 2)):
-            return contract_operator_12(operator, views[0], views[1], *expansion, spherical=spherical)
+            return contract_operator_12(operator, *views, *expansion, spherical=spherical, batch_dim=batch_dim)
         elif check_views_rank(views, (2, 2)):
-            return contract_operator_22(operator, *views, *expansion, spherical=spherical)
+            return contract_operator_22(operator, *views, *expansion, spherical=spherical, batch_dim=batch_dim)
         elif check_views_rank(views, (2, 0)):
-            return contract_operator_20(operator, views[0], expansion[0], spherical=spherical)
+            return contract_operator_20(operator, views[0], expansion[0], spherical=spherical, batch_dim=batch_dim)
         raise NotImplementedError(
             f"contraction for operator {self.__class__.__name__} with views {views} not implemented."
         )
@@ -349,16 +413,51 @@ class Operator(ABC):
         *,
         ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
+        batch_dim: bool = False,
     ) -> array[tuple[int, ...], float64]: ...
     @overload
     def collect(
         self,
         basis: Basis,
-        signature: tuple[Literal[0], Literal[1]] | tuple[Literal[1], Literal[0]],
+        signature: tuple[Literal[1], Literal[0]],
         symmetry_type: type[Symmetry[Any, Any]] | None = None,
         *,
         ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
+    ) -> array[tuple[int], float64]: ...
+    @overload
+    def collect(
+        self,
+        basis: Basis,
+        signature: tuple[Literal[1], Literal[0]],
+        symmetry_type: type[Symmetry[Any, Any]] | None = None,
+        *,
+        ao_slices: tuple[slice, ...] | None = None,
+        spherical: bool = False,
+        batch_dim: Literal[True],
+    ) -> array[tuple[int, int], float64]: ...
+    @overload
+    def collect(
+        self,
+        basis: Basis,
+        signature: tuple[Literal[1], Literal[0]],
+        symmetry_type: type[Symmetry[Any, Any]] | None = None,
+        *,
+        ao_slices: tuple[slice, ...] | None = None,
+        spherical: bool = False,
+        batch_dim: bool,
+    ) -> array[tuple[int], float64] | array[tuple[int, int], float64]: ...
+    @overload
+    def collect(
+        self,
+        basis: Basis,
+        signature: tuple[Literal[0], Literal[1]],
+        symmetry_type: type[Symmetry[Any, Any]] | None = None,
+        *,
+        ao_slices: tuple[slice, ...] | None = None,
+        spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int], float64]: ...
     @overload
     def collect(
@@ -369,6 +468,7 @@ class Operator(ABC):
         *,
         ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int], float64]: ...
     @overload
     def collect(
@@ -379,6 +479,7 @@ class Operator(ABC):
         *,
         ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int, int], float64]: ...
     @overload
     def collect(
@@ -389,6 +490,7 @@ class Operator(ABC):
         *,
         ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
+        batch_dim: Literal[False] = False,
     ) -> array[tuple[int, int, int, int], float64]: ...
 
     def collect(
@@ -399,6 +501,7 @@ class Operator(ABC):
         *,
         ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
+        batch_dim: bool = False,
     ) -> array[tuple[int, ...], float64]:
         r"""Collect contracted AO integrals for the operator.
 
@@ -408,6 +511,7 @@ class Operator(ABC):
             symmetry_type: Symmetry helper class for the integral matrix.
             ao_slices: AO slices for each integral axis in the original basis order.
             spherical: Return real spherical instead of Cartesian integrals.
+            batch_dim: Preserve the batch dimension in the output matrix.
 
         Returns:
             Contracted Cartesian or real spherical AO integrals.
@@ -427,7 +531,26 @@ class Operator(ABC):
                 f"operator symmetry {symmetry_type.__name__} not supported by operator {self.__class__.__name__}"
             )
 
-        if signature == (1, 1):
+        if batch_dim:
+            if signature == (1, 0):
+                return collect_batched_integral_10(
+                    basis,
+                    self,
+                    ao_slices=(ao_slices[0],),
+                    symmetry_type=symmetry_type,
+                    spherical=spherical,
+                )
+            raise NotImplementedError(f"batched collection for operator signature {signature} not implemented")
+
+        if signature == (1, 0):
+            return collect_integral_10(
+                basis,
+                self,
+                ao_slices=(ao_slices[0],),
+                symmetry_type=symmetry_type,
+                spherical=spherical,
+            )
+        elif signature == (1, 1):
             return collect_integral_11(
                 basis,
                 self,
@@ -459,7 +582,7 @@ class Operator(ABC):
                 symmetry_type=symmetry_type,
                 spherical=spherical,
             )
-        raise NotImplementedError(f"collection for operator signature {signature} not implemented.")
+        raise NotImplementedError(f"collection for operator signature {signature} not implemented")
 
     def __add__(self, other: object) -> Operator:
         if not isinstance(other, Operator):

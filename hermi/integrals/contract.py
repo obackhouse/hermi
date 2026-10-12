@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from math import prod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 import numpy as np
 
@@ -71,16 +71,145 @@ def _reduce_primitive_pair[S: tuple[int, ...]](
 
 
 def _unpack_from_shell_pair_major[S: tuple[int, ...]](
-    values: array[S, float64], *shells: ShellView, spherical: bool = False
+    values: array[S, float64],
+    *shells: ShellView,
+    batch_dim: bool = False,
+    spherical: bool = False,
 ) -> array[S, float64]:
     """Unpack a shell-pair-major array to an interleaved array of angular momentum functions."""
     num_functions = num_spherical_functions if spherical else num_cartesian_functions
     num_ang = tuple(num_functions(shell.angular_momentum) for shell in shells)
     num_shells = tuple(shell.num_shells for shell in shells)
-    transpose = sum(((i, i + len(shells)) for i in range(len(shells))), ())
-    expanded = values.reshape(*num_shells, *num_ang)
+    transpose = ((0,) if batch_dim else ()) + sum(
+        ((i + int(batch_dim), i + len(shells) + int(batch_dim)) for i in range(len(shells))), ()
+    )
+
+    expanded_shape = num_shells + num_ang
+    if batch_dim:
+        expanded_shape = (values.shape[0],) + expanded_shape
+    expanded = values.reshape(expanded_shape)
     expanded = expanded.transpose(transpose)
-    return expanded.reshape(tuple(map(prod, zip(num_shells, num_ang))))  # type: ignore[return-value]
+
+    flattened_shape = tuple(map(prod, zip(num_shells, num_ang)))
+    if batch_dim:
+        flattened_shape = (values.shape[0],) + flattened_shape
+    flattened = expanded.reshape(flattened_shape)
+
+    return flattened  # type: ignore[return-value]
+
+
+@overload
+def contract_operator_10(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    expansion_a: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[False] = False,
+) -> array[tuple[int], float64]: ...
+@overload
+def contract_operator_10(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    expansion_a: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[True],
+) -> array[tuple[int, int], float64]: ...
+@overload
+def contract_operator_10(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    expansion_a: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: bool,
+) -> array[tuple[int], float64] | array[tuple[int, int], float64]: ...
+
+
+def contract_operator_10(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    expansion_a: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: bool = False,
+) -> array[tuple[int], float64] | array[tuple[int, int], float64]:
+    r"""Contract a Hermite operator with (1, 0) Hermite expansion matrices for :math:`(a|\hat{O})`.
+
+    Args:
+        operator: Hermite operator matrix with shape ``(a, 1, p, 1)`` or ``(n, a, 1, p, 1)``.
+        shell_a: Single shell view.
+        expansion_a: Expansion matrix for the single shell with shape ``(a, i, p)`` or ``(n, a, i, p)``.
+        spherical: Return real spherical instead of Cartesian integrals.
+        batch_dim: Preserve the batch dimension in the output matrix.
+
+    Returns:
+        Contracted Cartesian or real spherical :math:`(a|\hat{O})` with shape ``(ai,)`` or ``(n, ai)``.
+    """
+    if expansion_a is None:
+        expansion_a = Expansion(shell_a).compute(spherical=spherical)
+    coefficients = shell_a.coefficient
+
+    # Align dimensions
+    operator = np.expand_dims(operator, axis=0) if operator.ndim == 4 else operator  # a 1 p 1 -> n a 1 p 1
+    expansion_a = np.expand_dims(expansion_a, axis=1 if expansion_a.ndim == 4 else (0, 2))  # a i p -> n a 1 i p
+    coefficients = np.expand_dims(coefficients, axis=(0, 2, 3, 4))  # a -> 1 a 1 1 1
+
+    # Apply the contraction coefficients
+    operator = operator * coefficients  # n a 1 p 1, n a 1 1 1 -> n a 1 p 1
+
+    # Contract the operator with the expansion matrix
+    contracted = expansion_a @ operator  # n a 1 i p, n a 1 p 1 -> n a 1 i 1
+
+    # Sum over batch dimension
+    axes = (2, 4) if batch_dim else (0, 2, 4)
+    contracted = np.sum(contracted, axis=axes)  # n a 1 i 1 -> (n) a i
+
+    # Reduce the a shell axis
+    contracted = _reduce_primitive(contracted, shell_a, axis=int(batch_dim))  # (n) a i -> (n) a i
+
+    # Unpack the contracted result into the final integral array
+    contracted = _unpack_from_shell_pair_major(  # (n) a i -> (n) ai
+        contracted, shell_a, batch_dim=batch_dim, spherical=spherical
+    )
+
+    return contracted
+
+
+@overload
+def contract_operator_11(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    shell_b: ShellView,
+    expansion_a: ExpansionMatrix | None = None,
+    expansion_b: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[False] = False,
+) -> array[tuple[int, int], float64]: ...
+@overload
+def contract_operator_11(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    shell_b: ShellView,
+    expansion_a: ExpansionMatrix | None = None,
+    expansion_b: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[True],
+) -> array[tuple[int, int, int], float64]: ...
+@overload
+def contract_operator_11(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    shell_b: ShellView,
+    expansion_a: ExpansionMatrix | None = None,
+    expansion_b: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: bool,
+) -> array[tuple[int, int], float64] | array[tuple[int, int, int], float64]: ...
 
 
 def contract_operator_11(
@@ -91,7 +220,8 @@ def contract_operator_11(
     expansion_b: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-) -> array[tuple[int, int], float64]:
+    batch_dim: bool = False,
+) -> array[tuple[int, ...], float64]:
     r"""Contract a Hermite operator with (1, 1) Hermite expansion matrices for :math:`(a|\hat{O}|b)`.
 
     Args:
@@ -101,9 +231,10 @@ def contract_operator_11(
         expansion_a: Expansion matrix for the first shell with shape ``(a, p, i)`` or ``(n, a, p, i)``.
         expansion_b: Expansion matrix for the second shell with shape ``(b, q, j)`` or ``(n, b, q, j)``.
         spherical: Return real spherical instead of Cartesian integrals.
+        batch_dim: Preserve the batch dimension in the output matrix.
 
     Returns:
-        Contracted Cartesian or real spherical :math:`(a|\hat{O}|b)` with shape ``(ai, bj)``.
+        Contracted Cartesian or real spherical :math:`(a|\hat{O}|b)` with shape ``(ai, bj)`` or ``(n, ai, bj)``.
     """
     if expansion_a is None:
         expansion_a = Expansion(shell_a).compute(spherical=spherical)
@@ -130,15 +261,53 @@ def contract_operator_11(
     contracted = expansion_a @ contracted  # n a 1 i p, n a b p j
 
     # Sum over batch dimension
-    contracted = np.sum(contracted, axis=0)  # n a b i j -> a b i j
+    if not batch_dim:
+        contracted = np.sum(contracted, axis=0)  # n a b i j -> a b i j
 
     # Reduce the a shell axis
-    contracted = _reduce_primitive(contracted, shell_a, axis=0)  # a b i j -> a b i j
+    contracted = _reduce_primitive(contracted, shell_a, axis=int(batch_dim))  # (n) a b i j -> (n) a b i j
 
     # Unpack the contracted result into the final integral array
-    contracted = _unpack_from_shell_pair_major(contracted, shell_a, shell_b, spherical=spherical)  # a b i j -> ai bj
+    contracted = _unpack_from_shell_pair_major(  # (n) a b i j -> (n) ai bj
+        contracted, shell_a, shell_b, batch_dim=batch_dim, spherical=spherical
+    )
 
     return contracted
+
+
+@overload
+def contract_operator_22(
+    operator: OperatorMatrix,
+    pair_ab: ShellPairView,
+    pair_cd: ShellPairView,
+    expansion_ab: ExpansionMatrix | None = None,
+    expansion_cd: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[False] = False,
+) -> array[tuple[int, int, int, int], float64]: ...
+@overload
+def contract_operator_22(
+    operator: OperatorMatrix,
+    pair_ab: ShellPairView,
+    pair_cd: ShellPairView,
+    expansion_ab: ExpansionMatrix | None = None,
+    expansion_cd: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[True],
+) -> array[tuple[int, int, int, int, int], float64]: ...
+@overload
+def contract_operator_22(
+    operator: OperatorMatrix,
+    pair_ab: ShellPairView,
+    pair_cd: ShellPairView,
+    expansion_ab: ExpansionMatrix | None = None,
+    expansion_cd: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: bool,
+) -> array[tuple[int, int, int, int], float64] | array[tuple[int, int, int, int, int], float64]: ...
 
 
 def contract_operator_22(
@@ -149,7 +318,8 @@ def contract_operator_22(
     expansion_cd: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-) -> array[tuple[int, int, int, int], float64]:
+    batch_dim: bool = False,
+) -> array[tuple[int, ...], float64]:
     r"""Contract a Hermite operator with (2, 2) Hermite expansion matrices for :math:`(ab|\hat{O}|cd)`.
 
     Args:
@@ -159,9 +329,11 @@ def contract_operator_22(
         expansion_ab: Expansion matrix for the first shell pair with shape ``(ab, p, ij)`` or ``(n, ab, p, ij)``.
         expansion_cd: Expansion matrix for the second shell pair with shape ``(cd, q, kl)`` or ``(n, cd, q, kl)``.
         spherical: Return real spherical instead of Cartesian integrals.
+        batch_dim: Preserve the batch dimension in the output matrix.
 
     Returns:
-        Contracted Cartesian or real spherical :math:`(ab|\hat{O}|cd)` integral block with shape ``(ai, bj, ck, dl)``.
+        Contracted Cartesian or real spherical :math:`(ab|\hat{O}|cd)` integral block with shape ``(ai, bj, ck, dl)``
+        or ``(n, ai, bj, ck, dl)``.
     """
     if expansion_ab is None:
         expansion_ab = Expansion(pair_ab).compute(spherical=spherical)
@@ -187,10 +359,11 @@ def contract_operator_22(
     contracted = expansion_ab @ contracted  # n ab 1 ij p, n ab cd p kl -> n ab cd ij kl
 
     # Sum over batch dimension
-    contracted = np.sum(contracted, axis=0)  # n ab cd ij kl -> ab cd ij kl
+    if not batch_dim:
+        contracted = np.sum(contracted, axis=0)  # n ab cd ij kl -> ab cd ij kl
 
     # Reduce the a and b shell axes
-    contracted = _reduce_primitive_pair(contracted, pair_ab, axis=0)  # ab cd ij kl -> ab cd ij kl
+    contracted = _reduce_primitive_pair(contracted, pair_ab, axis=int(batch_dim))  # (n) ab cd ij kl -> (n) ab cd ij kl
 
     # Unpack the contracted result into the final integral array
     contracted = _unpack_from_shell_pair_major(  # ab cd ij kl -> ai bj ck dl
@@ -199,10 +372,46 @@ def contract_operator_22(
         pair_ab.shell_j,
         pair_cd.shell_i,
         pair_cd.shell_j,
+        batch_dim=batch_dim,
         spherical=spherical,
     )
 
     return contracted
+
+
+@overload
+def contract_operator_12(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    pair_bc: ShellPairView,
+    expansion_a: ExpansionMatrix | None = None,
+    expansion_bc: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[False] = False,
+) -> array[tuple[int, int, int], float64]: ...
+@overload
+def contract_operator_12(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    pair_bc: ShellPairView,
+    expansion_a: ExpansionMatrix | None = None,
+    expansion_bc: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[True],
+) -> array[tuple[int, int, int, int], float64]: ...
+@overload
+def contract_operator_12(
+    operator: OperatorMatrix,
+    shell_a: ShellView,
+    pair_bc: ShellPairView,
+    expansion_a: ExpansionMatrix | None = None,
+    expansion_bc: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: bool,
+) -> array[tuple[int, int, int], float64] | array[tuple[int, int, int, int], float64]: ...
 
 
 def contract_operator_12(
@@ -213,7 +422,8 @@ def contract_operator_12(
     expansion_bc: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-) -> array[tuple[int, int, int], float64]:
+    batch_dim: bool = False,
+) -> array[tuple[int, ...], float64]:
     r"""Contract a Hermite operator with (1, 2) Hermite expansion matrices for :math:`(a|\hat{O}|bc)`.
 
     Args:
@@ -223,9 +433,11 @@ def contract_operator_12(
         expansion_a: Expansion matrix for the single shell with shape ``(a, i, p)`` or ``(n, a, i, p)``.
         expansion_bc: Expansion matrix for the shell pair with shape ``(bc, jk, q)`` or ``(n, bc, jk, q)``.
         spherical: Return real spherical instead of Cartesian integrals.
+        batch_dim: Preserve the batch dimension in the output matrix.
 
     Returns:
-        Contracted Cartesian or real spherical :math:`(a|\hat{O}|bc)` integral block with shape ``(ai, bj, ck)``.
+        Contracted Cartesian or real spherical :math:`(a|\hat{O}|bc)` integral block with shape ``(ai, bj, ck)`` or
+        ``(n, ai, bj, ck)``.
     """
     if expansion_a is None:
         expansion_a = Expansion(shell_a).compute(spherical=spherical)
@@ -252,17 +464,47 @@ def contract_operator_12(
     contracted = expansion_a @ contracted  # n a 1 i p, n a bc p jk -> n a bc i jk
 
     # Sum over batch dimension
-    contracted = np.sum(contracted, axis=0)  # n a bc i jk -> a bc i jk
+    if not batch_dim:
+        contracted = np.sum(contracted, axis=0)  # n a bc i jk -> a bc i jk
 
     # Reduce the a shell axis
-    contracted = _reduce_primitive(contracted, shell_a, axis=0)  # a bc i jk -> a bc i jk
+    contracted = _reduce_primitive(contracted, shell_a, axis=int(batch_dim))  # (n) a bc i jk -> (n) a bc i jk
 
     # Unpack the shell-pair-major array to the final integral array
     contracted = _unpack_from_shell_pair_major(  # a bc i jk -> ai bj ck
-        contracted, shell_a, pair_bc.shell_i, pair_bc.shell_j, spherical=spherical
+        contracted, shell_a, pair_bc.shell_i, pair_bc.shell_j, batch_dim=batch_dim, spherical=spherical
     )
 
     return contracted
+
+
+@overload
+def contract_operator_20(
+    operator: OperatorMatrix,
+    pair_ab: ShellPairView,
+    expansion_ab: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[False] = False,
+) -> array[tuple[int, int], float64]: ...
+@overload
+def contract_operator_20(
+    operator: OperatorMatrix,
+    pair_ab: ShellPairView,
+    expansion_ab: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: Literal[True],
+) -> array[tuple[int, int, int], float64]: ...
+@overload
+def contract_operator_20(
+    operator: OperatorMatrix,
+    pair_ab: ShellPairView,
+    expansion_ab: ExpansionMatrix | None = None,
+    *,
+    spherical: bool = False,
+    batch_dim: bool,
+) -> array[tuple[int, int], float64] | array[tuple[int, int, int], float64]: ...
 
 
 def contract_operator_20(
@@ -271,7 +513,8 @@ def contract_operator_20(
     expansion_ab: ExpansionMatrix | None = None,
     *,
     spherical: bool = False,
-) -> array[tuple[int, int, int], float64]:
+    batch_dim: bool = False,
+) -> array[tuple[int, ...], float64]:
     r"""Contract a Hermite operator with (2, 0) Hermite expansion matrices for :math:`(ab|\hat{O})`.
 
     Args:
@@ -279,9 +522,11 @@ def contract_operator_20(
         pair_ab: Shell pair view.
         expansion_ab: Expansion matrix for the first shell pair with shape ``(ab, p, ij)`` or ``(n, ab, p, ij)``.
         spherical: Return real spherical instead of Cartesian integrals.
+        batch_dim: Preserve the batch dimension in the output matrix.
 
     Returns:
-        Contracted Cartesian or real spherical :math:`(ab|\hat{O})` integral block with shape ``(ai, bj)``.
+        Contracted Cartesian or real spherical :math:`(ab|\hat{O})` integral block with shape ``(ai, bj)`` or
+        ``(n, ai, bj)``.
     """
     if expansion_ab is None:
         expansion_ab = Expansion(pair_ab).compute(spherical=spherical)
@@ -298,14 +543,18 @@ def contract_operator_20(
     contracted = expansion_ab @ operator  # n ab 1 ij p, n ab 1 p 1 -> n ab 1 ij 1
 
     # Sum over batch dimension
-    contracted = np.sum(contracted, axis=0)  # n ab 1 ij 1 -> ab 1 ij 1
+    if not batch_dim:
+        contracted = np.sum(contracted, axis=0)  # n ab 1 ij 1 -> ab 1 ij 1
 
     # Reduce the a and b shell axes
-    contracted = _reduce_primitive_pair(contracted[:, 0, :, 0], pair_ab, axis=0)  # ab ij -> ab ij
+    if batch_dim:
+        contracted = _reduce_primitive_pair(contracted[:, :, 0, :, 0], pair_ab, axis=1)  # n ab ij -> n ab ij
+    else:
+        contracted = _reduce_primitive_pair(contracted[:, 0, :, 0], pair_ab, axis=0)  # ab ij -> ab ij
 
     # Unpack the contracted result into the final integral array
     contracted = _unpack_from_shell_pair_major(  # ab ij -> ai bj
-        contracted, pair_ab.shell_i, pair_ab.shell_j, spherical=spherical
+        contracted, pair_ab.shell_i, pair_ab.shell_j, batch_dim=batch_dim, spherical=spherical
     )
 
     return contracted

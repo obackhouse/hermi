@@ -6,7 +6,7 @@ import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from math import prod
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -56,13 +56,10 @@ class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
         """Rank of the symmetry."""
         return len(self.shape)
 
-    @overload
-    def set_value[T: number](self, array: array[S, T], indices: S, value: T) -> None: ...
-    @overload
-    def set_value[T: number](self, array: array[S, T], indices: M, value: array[S, T]) -> None: ...
-
     @abstractmethod
-    def set_value[T: number](self, array: array[S, T], indices: S | M, value: T | array[S, T]) -> None:
+    def set_value[T: number](
+        self, array: array[tuple[int, ...], T], indices: M, value: array[tuple[int, ...], T]
+    ) -> None:
         """Set an array according to the symmetry.
 
         Args:
@@ -149,29 +146,14 @@ class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
 
 
 @dataclass(frozen=True)
-class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
-    """Symmetry for a 2D array with no symmetry (S1)."""
-
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int], T],
-        indices: tuple[int, int],
-        value: T,
-    ) -> None: ...
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int], T],
-        indices: tuple[slice, slice],
-        value: array[tuple[int, int], T],
-    ) -> None: ...
+class SymmetryN1S1(Symmetry[tuple[int], tuple[slice]]):
+    """Symmetry for a 1D array with no symmetry (S1)."""
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, int], T],
-        indices: tuple[int, int] | tuple[slice, slice],
-        value: T | array[tuple[int, int], T],
+        array: array[tuple[int, ...], T],
+        indices: tuple[slice],
+        value: array[tuple[int, ...], T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -180,7 +162,72 @@ class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
             indices: Indices to set values at.
             value: Value to set.
         """
-        array[indices] = value
+        array[..., *indices] = value
+
+    def ravel_index(self, index: tuple[int]) -> int:
+        """Ravel an index according to the symmetry.
+
+        Args:
+            index: Index to ravel.
+
+        Returns:
+            Raveled index.
+        """
+        return index[0]
+
+    def unravel_index(self, index: int) -> tuple[int]:
+        """Unravel an index according to the symmetry.
+
+        Args:
+            index: Index to unravel.
+
+        Returns:
+            Unraveled index.
+        """
+        return (index,)
+
+    @property
+    def ravelled_size(self) -> int:
+        """Total size of the ravelled array."""
+        return self.shape[0]
+
+    def canonical_indices(self) -> Iterable[tuple[tuple[int], bool]]:
+        """Yield canonical indices for the symmetry.
+
+        Yields:
+            Canonical indices for the symmetry and whether their sign flips under the permutation.
+        """
+        for i in range(self.shape[0]):
+            yield (i,), False
+
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+        """Check that a sequence of objects is valid under the symmetry.
+
+        Args:
+            objects: Sequence of objects to check.
+        """
+        if len(objects) != 1:
+            raise ValueError("objects must have length 1")
+
+
+@dataclass(frozen=True)
+class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
+    """Symmetry for a 2D array with no symmetry (S1)."""
+
+    def set_value[T: number](
+        self,
+        array: array[tuple[int, ...], T],
+        indices: tuple[slice, slice],
+        value: array[tuple[int, ...], T],
+    ) -> None:
+        """Set an array value according to the symmetry.
+
+        Args:
+            array: Array to set values in.
+            indices: Indices to set values at.
+            value: Value to set.
+        """
+        array[..., *indices] = value
 
     def ravel_index(self, index: tuple[int, int]) -> int:
         """Ravel an index according to the symmetry.
@@ -232,26 +279,11 @@ class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
 class SymmetryN2S2(Symmetry[tuple[int, int], tuple[slice, slice]]):
     """Symmetry for a 2D array with S2 symmetry."""
 
-    @overload
     def set_value[T: number](
         self,
-        array: array[tuple[int, int], T],
-        indices: tuple[int, int],
-        value: T,
-    ) -> None: ...
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int], T],
+        array: array[tuple[int, ...], T],
         indices: tuple[slice, slice],
-        value: array[tuple[int, int], T],
-    ) -> None: ...
-
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int], T],
-        indices: tuple[int, int] | tuple[slice, slice],
-        value: T | array[tuple[int, int], T],
+        value: array[tuple[int, ...], T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -261,9 +293,9 @@ class SymmetryN2S2(Symmetry[tuple[int, int], tuple[slice, slice]]):
             value: Value to set.
         """
         i, j = indices
-        array[i, j] = value
+        array[..., i, j] = value
         if i != j:
-            array[j, i] = np.transpose(value, (1, 0))
+            array[..., j, i] = np.swapaxes(value, -1, -2)
 
     def ravel_index(self, index: tuple[int, int]) -> int:
         """Ravel an index according to the symmetry.
@@ -324,26 +356,11 @@ class SymmetryN2A1(SymmetryN2S1):
 class SymmetryN2A2(SymmetryN2S2):
     """Symmetry for a 2D array with A2 symmetry."""
 
-    @overload
     def set_value[T: number](
         self,
-        array: array[tuple[int, int], T],
-        indices: tuple[int, int],
-        value: T,
-    ) -> None: ...
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int], T],
+        array: array[tuple[int, ...], T],
         indices: tuple[slice, slice],
-        value: array[tuple[int, int], T],
-    ) -> None: ...
-
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int], T],
-        indices: tuple[int, int] | tuple[slice, slice],
-        value: T | array[tuple[int, int], T],
+        value: array[tuple[int, ...], T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -353,35 +370,20 @@ class SymmetryN2A2(SymmetryN2S2):
             value: Value to set.
         """
         i, j = indices
-        array[i, j] = value
+        array[..., i, j] = value
         if i != j:
-            array[j, i] = -value
+            array[..., j, i] = -value
 
 
 @dataclass(frozen=True)
 class SymmetryN3S1(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]):
     """Symmetry for a 3D array with no symmetry (S1)."""
 
-    @overload
     def set_value[T: number](
         self,
-        array: array[tuple[int, int, int], T],
-        indices: tuple[int, int, int],
-        value: T,
-    ) -> None: ...
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int], T],
+        array: array[tuple[int, ...], T],
         indices: tuple[slice, slice, slice],
-        value: array[tuple[int, int, int], T],
-    ) -> None: ...
-
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int], T],
-        indices: tuple[int, int, int] | tuple[slice, slice, slice],
-        value: T | array[tuple[int, int, int], T],
+        value: array[tuple[int, ...], T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -390,7 +392,7 @@ class SymmetryN3S1(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]):
             indices: Indices to set values at.
             value: Value to set.
         """
-        array[indices] = value
+        array[..., *indices] = value
 
     def ravel_index(self, index: tuple[int, int, int]) -> int:
         """Ravel an index according to the symmetry.
@@ -442,26 +444,11 @@ class SymmetryN3S1(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]):
 class SymmetryN3S2Ket(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]):
     """Symmetry for a 3D array with S2 symmetry on the second two indices."""
 
-    @overload
     def set_value[T: number](
         self,
-        array: array[tuple[int, int, int], T],
-        indices: tuple[int, int, int],
-        value: T,
-    ) -> None: ...
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int], T],
+        array: array[tuple[int, ...], T],
         indices: tuple[slice, slice, slice],
-        value: array[tuple[int, int, int], T],
-    ) -> None: ...
-
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int], T],
-        indices: tuple[int, int, int] | tuple[slice, slice, slice],
-        value: T | array[tuple[int, int, int], T],
+        value: array[tuple[int, ...], T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -471,9 +458,9 @@ class SymmetryN3S2Ket(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]
             value: Value to set.
         """
         i, j, k = indices
-        array[i, j, k] = value
+        array[..., i, j, k] = value
         if j != k:
-            array[i, k, j] = np.transpose(value, (0, 2, 1))
+            array[..., i, k, j] = np.swapaxes(value, -1, -2)
 
     def ravel_index(self, index: tuple[int, int, int]) -> int:
         """Ravel an index according to the symmetry.
@@ -533,26 +520,11 @@ class SymmetryN3S2Ket(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]
 class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]):
     """Symmetry for a 4D array with no symmetry (S1)."""
 
-    @overload
     def set_value[T: number](
         self,
-        array: array[tuple[int, int, int, int], T],
-        indices: tuple[int, int, int, int],
-        value: T,
-    ) -> None: ...
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int, int], T],
+        array: array[tuple[int, ...], T],
         indices: tuple[slice, slice, slice, slice],
-        value: array[tuple[int, int, int, int], T],
-    ) -> None: ...
-
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int, int], T],
-        indices: tuple[int, int, int, int] | tuple[slice, slice, slice, slice],
-        value: T | array[tuple[int, int, int, int], T],
+        value: array[tuple[int, ...], T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -561,7 +533,7 @@ class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
             indices: Indices to set values at.
             value: Value to set.
         """
-        array[indices] = value
+        array[..., *indices] = value
 
     def ravel_index(self, index: tuple[int, int, int, int]) -> int:
         """Ravel an index according to the symmetry.
@@ -615,26 +587,11 @@ class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
 class SymmetryN4S4(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]):
     """Symmetry for a 4D array with S4 symmetry."""
 
-    @overload
     def set_value[T: number](
         self,
-        array: array[tuple[int, int, int, int], T],
-        indices: tuple[int, int, int, int],
-        value: T,
-    ) -> None: ...
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int, int], T],
+        array: array[tuple[int, ...], T],
         indices: tuple[slice, slice, slice, slice],
-        value: array[tuple[int, int, int, int], T],
-    ) -> None: ...
-
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int, int], T],
-        indices: tuple[int, int, int, int] | tuple[slice, slice, slice, slice],
-        value: T | array[tuple[int, int, int, int], T],
+        value: array[tuple[int, ...], T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -652,7 +609,8 @@ class SymmetryN4S4(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
             ((j, i, l, k), (1, 0, 3, 2)),
         ]:
             if indices_perm not in seen:
-                array[indices_perm] = np.transpose(value, perm)
+                axes = (*range(np.ndim(value) - 4), *(axis + np.ndim(value) - 4 for axis in perm))
+                array[..., *indices_perm] = np.transpose(value, axes)
                 seen.add(indices_perm)
 
     def ravel_index(self, index: tuple[int, int, int, int]) -> int:
@@ -715,26 +673,11 @@ class SymmetryN4S4(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
 class SymmetryN4S8(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]):
     """Symmetry for a 4D array with S8 symmetry."""
 
-    @overload
     def set_value[T: number](
         self,
-        array: array[tuple[int, int, int, int], T],
-        indices: tuple[int, int, int, int],
-        value: T,
-    ) -> None: ...
-    @overload
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int, int], T],
+        array: array[tuple[int, ...], T],
         indices: tuple[slice, slice, slice, slice],
-        value: array[tuple[int, int, int, int], T],
-    ) -> None: ...
-
-    def set_value[T: number](
-        self,
-        array: array[tuple[int, int, int, int], T],
-        indices: tuple[int, int, int, int] | tuple[slice, slice, slice, slice],
-        value: T | array[tuple[int, int, int, int], T],
+        value: array[tuple[int, ...], T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -756,7 +699,8 @@ class SymmetryN4S8(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
             ((l, k, j, i), (3, 2, 1, 0)),
         ]:
             if indices_perm not in seen:
-                array[indices_perm] = np.transpose(value, perm)
+                axes = (*range(np.ndim(value) - 4), *(axis + np.ndim(value) - 4 for axis in perm))
+                array[..., *indices_perm] = np.transpose(value, axes)
                 seen.add(indices_perm)
 
     def ravel_index(self, index: tuple[int, int, int, int]) -> int:
