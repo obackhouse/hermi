@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 @lru_cache(maxsize=None)
-def cartesian_indices(angular_momentum: int) -> array[tuple[int, int], np.int64]:
+def cartesian_indices(angular_momentum: int) -> array[np.int64]:
     """Return Cartesian indices in lexicographic order."""
     return np.asarray(
         [
@@ -27,7 +27,7 @@ def cartesian_indices(angular_momentum: int) -> array[tuple[int, int], np.int64]
 
 
 @lru_cache(maxsize=None)
-def cartesian_to_spherical(angular_momentum: int) -> array[tuple[int, int], np.float64]:
+def cartesian_to_spherical(angular_momentum: int) -> array[np.float64]:
     """Return the normalized Cartesian-to-real-spherical transformation."""
     if angular_momentum < 0:
         raise ValueError("angular_momentum must be nonnegative")
@@ -79,12 +79,12 @@ def num_cartesian_functions(angular_momentum: int) -> int: ...
 
 
 @overload
-def num_cartesian_functions[S: tuple[int, ...]](angular_momentum: array[S, np.int64]) -> array[S, np.int64]: ...
+def num_cartesian_functions(angular_momentum: array[np.int64]) -> array[np.int64]: ...
 
 
 def num_cartesian_functions(
-    angular_momentum: int | array[tuple[int, ...], np.int64],
-) -> int | array[tuple[int, ...], np.int64]:
+    angular_momentum: int | array[np.int64],
+) -> int | array[np.int64]:
     """Return the number of Cartesian functions for a given angular momentum."""
     return (angular_momentum + 1) * (angular_momentum + 2) // 2
 
@@ -94,18 +94,18 @@ def num_spherical_functions(angular_momentum: int) -> int: ...
 
 
 @overload
-def num_spherical_functions[S: tuple[int, ...]](angular_momentum: array[S, np.int64]) -> array[S, np.int64]: ...
+def num_spherical_functions(angular_momentum: array[np.int64]) -> array[np.int64]: ...
 
 
 def num_spherical_functions(
-    angular_momentum: int | array[tuple[int, ...], np.int64],
-) -> int | array[tuple[int, ...], np.int64]:
+    angular_momentum: int | array[np.int64],
+) -> int | array[np.int64]:
     """Return the number of real spherical functions for an angular momentum."""
     return 2 * angular_momentum + 1
 
 
 @lru_cache(maxsize=None)
-def cartesian_normalization(angular_momentum: int) -> array[tuple[int], np.float64]:
+def cartesian_normalization(angular_momentum: int) -> array[np.float64]:
     """Return the Cartesian part of primitive normalization factors."""
     factors = []
     for triple in cartesian_indices(angular_momentum):

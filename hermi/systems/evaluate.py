@@ -52,13 +52,13 @@ def _get_screening_radius(shell: ShellView, threshold: float, *, spherical: bool
 
 def evaluate_basis(
     basis: Basis,
-    points: array[tuple[int, int], float64],
+    points: array[float64],
     *,
     ao_slice: slice = slice(None),
     spherical: bool = False,
     block_size: int = BLOCK_SIZE,
     threshold: float = 1e-10,
-) -> array[tuple[int, int], float64]:
+) -> array[float64]:
     r"""Evaluate contracted Gaussian basis functions at points in space.
 
     Args:

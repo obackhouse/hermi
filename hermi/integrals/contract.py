@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from math import prod
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from hermi.systems.basis import ShellPairView, ShellView
 
 
-def _reduce_primitive[S: tuple[int, ...]](values: array[S, float64], shell: ShellView, axis: int) -> array[S, float64]:
+def _reduce_primitive(values: array[float64], shell: ShellView, axis: int) -> array[float64]:
     """Reduce a primitive shell axis via summation to contracted shells."""
     expanded = values.reshape(
         *values.shape[:axis],
@@ -33,12 +33,10 @@ def _reduce_primitive[S: tuple[int, ...]](values: array[S, float64], shell: Shel
         shell.num_shells,
         *values.shape[axis + 1 :],
     )
-    return expanded  # type: ignore[return-value]
+    return expanded
 
 
-def _reduce_primitive_pair[S: tuple[int, ...]](
-    values: array[S, float64], pair: ShellPairView, axis: int
-) -> array[S, float64]:
+def _reduce_primitive_pair(values: array[float64], pair: ShellPairView, axis: int) -> array[float64]:
     """Reduce a primitive shell-pair axis via summation to contracted shells."""
     expanded = values.reshape(
         *values.shape[:axis],
@@ -68,15 +66,15 @@ def _reduce_primitive_pair[S: tuple[int, ...]](
         pair.shell_i.num_shells * pair.shell_j.num_shells,
         *values.shape[axis + 1 :],
     )
-    return expanded  # type: ignore[return-value]
+    return expanded
 
 
-def _unpack_from_shell_pair_major[S: tuple[int, ...]](
-    values: array[S, float64],
+def _unpack_from_shell_pair_major(
+    values: array[float64],
     *shells: ShellView,
     batch_dim: bool = False,
     spherical: bool = False,
-) -> array[S, float64]:
+) -> array[float64]:
     """Unpack a shell-pair-major array to an interleaved array of angular momentum functions."""
     num_functions = num_spherical_functions if spherical else num_cartesian_functions
     num_ang = tuple(num_functions(shell.angular_momentum) for shell in shells)
@@ -96,36 +94,7 @@ def _unpack_from_shell_pair_major[S: tuple[int, ...]](
         flattened_shape = (values.shape[0],) + flattened_shape
     flattened = expanded.reshape(flattened_shape)
 
-    return flattened  # type: ignore[return-value]
-
-
-@overload
-def contract_operator_10(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    expansion_a: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int], float64]: ...
-@overload
-def contract_operator_10(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    expansion_a: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int], float64]: ...
-@overload
-def contract_operator_10(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    expansion_a: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: bool,
-) -> array[tuple[int], float64] | array[tuple[int, int], float64]: ...
+    return flattened
 
 
 def contract_operator_10(
@@ -135,7 +104,7 @@ def contract_operator_10(
     *,
     spherical: bool = False,
     batch_dim: bool = False,
-) -> array[tuple[int], float64] | array[tuple[int, int], float64]:
+) -> array[float64]:
     r"""Contract a Hermite operator with (1, 0) Hermite expansion matrices for :math:`(a|\hat{O})`.
 
     Args:
@@ -177,41 +146,6 @@ def contract_operator_10(
     return contracted
 
 
-@overload
-def contract_operator_11(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    shell_b: ShellView,
-    expansion_a: ExpansionMatrix | None = None,
-    expansion_b: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int, int], float64]: ...
-@overload
-def contract_operator_11(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    shell_b: ShellView,
-    expansion_a: ExpansionMatrix | None = None,
-    expansion_b: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int, int], float64]: ...
-@overload
-def contract_operator_11(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    shell_b: ShellView,
-    expansion_a: ExpansionMatrix | None = None,
-    expansion_b: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: bool,
-) -> array[tuple[int, int], float64] | array[tuple[int, int, int], float64]: ...
-
-
 def contract_operator_11(
     operator: OperatorMatrix,
     shell_a: ShellView,
@@ -221,7 +155,7 @@ def contract_operator_11(
     *,
     spherical: bool = False,
     batch_dim: bool = False,
-) -> array[tuple[int, ...], float64]:
+) -> array[float64]:
     r"""Contract a Hermite operator with (1, 1) Hermite expansion matrices for :math:`(a|\hat{O}|b)`.
 
     Args:
@@ -276,41 +210,6 @@ def contract_operator_11(
     return contracted
 
 
-@overload
-def contract_operator_22(
-    operator: OperatorMatrix,
-    pair_ab: ShellPairView,
-    pair_cd: ShellPairView,
-    expansion_ab: ExpansionMatrix | None = None,
-    expansion_cd: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int, int, int, int], float64]: ...
-@overload
-def contract_operator_22(
-    operator: OperatorMatrix,
-    pair_ab: ShellPairView,
-    pair_cd: ShellPairView,
-    expansion_ab: ExpansionMatrix | None = None,
-    expansion_cd: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int, int, int, int], float64]: ...
-@overload
-def contract_operator_22(
-    operator: OperatorMatrix,
-    pair_ab: ShellPairView,
-    pair_cd: ShellPairView,
-    expansion_ab: ExpansionMatrix | None = None,
-    expansion_cd: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: bool,
-) -> array[tuple[int, int, int, int], float64] | array[tuple[int, int, int, int, int], float64]: ...
-
-
 def contract_operator_22(
     operator: OperatorMatrix,
     pair_ab: ShellPairView,
@@ -320,7 +219,7 @@ def contract_operator_22(
     *,
     spherical: bool = False,
     batch_dim: bool = False,
-) -> array[tuple[int, ...], float64]:
+) -> array[float64]:
     r"""Contract a Hermite operator with (2, 2) Hermite expansion matrices for :math:`(ab|\hat{O}|cd)`.
 
     Args:
@@ -381,41 +280,6 @@ def contract_operator_22(
     return contracted
 
 
-@overload
-def contract_operator_12(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    pair_bc: ShellPairView,
-    expansion_a: ExpansionMatrix | None = None,
-    expansion_bc: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int, int, int], float64]: ...
-@overload
-def contract_operator_12(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    pair_bc: ShellPairView,
-    expansion_a: ExpansionMatrix | None = None,
-    expansion_bc: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int, int, int], float64]: ...
-@overload
-def contract_operator_12(
-    operator: OperatorMatrix,
-    shell_a: ShellView,
-    pair_bc: ShellPairView,
-    expansion_a: ExpansionMatrix | None = None,
-    expansion_bc: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: bool,
-) -> array[tuple[int, int, int], float64] | array[tuple[int, int, int, int], float64]: ...
-
-
 def contract_operator_12(
     operator: OperatorMatrix,
     shell_a: ShellView,
@@ -425,7 +289,7 @@ def contract_operator_12(
     *,
     spherical: bool = False,
     batch_dim: bool = False,
-) -> array[tuple[int, ...], float64]:
+) -> array[float64]:
     r"""Contract a Hermite operator with (1, 2) Hermite expansion matrices for :math:`(a|\hat{O}|bc)`.
 
     Args:
@@ -481,35 +345,6 @@ def contract_operator_12(
     return contracted
 
 
-@overload
-def contract_operator_20(
-    operator: OperatorMatrix,
-    pair_ab: ShellPairView,
-    expansion_ab: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[False] = False,
-) -> array[tuple[int, int], float64]: ...
-@overload
-def contract_operator_20(
-    operator: OperatorMatrix,
-    pair_ab: ShellPairView,
-    expansion_ab: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: Literal[True],
-) -> array[tuple[int, int, int], float64]: ...
-@overload
-def contract_operator_20(
-    operator: OperatorMatrix,
-    pair_ab: ShellPairView,
-    expansion_ab: ExpansionMatrix | None = None,
-    *,
-    spherical: bool = False,
-    batch_dim: bool,
-) -> array[tuple[int, int], float64] | array[tuple[int, int, int], float64]: ...
-
-
 def contract_operator_20(
     operator: OperatorMatrix,
     pair_ab: ShellPairView,
@@ -517,7 +352,7 @@ def contract_operator_20(
     *,
     spherical: bool = False,
     batch_dim: bool = False,
-) -> array[tuple[int, ...], float64]:
+) -> array[float64]:
     r"""Contract a Hermite operator with (2, 0) Hermite expansion matrices for :math:`(ab|\hat{O})`.
 
     Args:

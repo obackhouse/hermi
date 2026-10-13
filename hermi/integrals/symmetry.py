@@ -32,7 +32,7 @@ def _unravel_symmetric_indices(index: int) -> tuple[int, int]:
     return i, j
 
 
-def _equal_elements[T: (Comparable, array[tuple[int], number])](*elements: T) -> bool:
+def _equal_elements[T: (Comparable, array[number])](*elements: T) -> bool:
     """Check if all elements are equal."""
     first = elements[0]
     if any(isinstance(element, np.ndarray) for element in elements):
@@ -57,9 +57,7 @@ class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
         return len(self.shape)
 
     @abstractmethod
-    def set_value[T: number](
-        self, array: array[tuple[int, ...], T], indices: M, value: array[tuple[int, ...], T]
-    ) -> None:
+    def set_value[T: number](self, array: array[T], indices: M, value: array[T]) -> None:
         """Set an array according to the symmetry.
 
         Args:
@@ -136,7 +134,7 @@ class Symmetry[S: tuple[int, ...], M: tuple[slice, ...]](ABC):
         pass
 
     @abstractmethod
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:
@@ -151,9 +149,9 @@ class SymmetryN1S1(Symmetry[tuple[int], tuple[slice]]):
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -200,7 +198,7 @@ class SymmetryN1S1(Symmetry[tuple[int], tuple[slice]]):
         for i in range(self.shape[0]):
             yield (i,), False
 
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:
@@ -216,9 +214,9 @@ class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice, slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -265,7 +263,7 @@ class SymmetryN2S1(Symmetry[tuple[int, int], tuple[slice, slice]]):
         for indices in itertools.product(range(self.shape[0]), range(self.shape[1])):
             yield indices, False
 
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:
@@ -281,9 +279,9 @@ class SymmetryN2S2(Symmetry[tuple[int, int], tuple[slice, slice]]):
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice, slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -333,7 +331,7 @@ class SymmetryN2S2(Symmetry[tuple[int, int], tuple[slice, slice]]):
         for indices in itertools.combinations_with_replacement(range(self.shape[0]), 2):
             yield indices, False
 
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:
@@ -358,9 +356,9 @@ class SymmetryN2A2(SymmetryN2S2):
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice, slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -381,9 +379,9 @@ class SymmetryN3S1(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]):
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice, slice, slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -430,7 +428,7 @@ class SymmetryN3S1(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]):
         for indices in itertools.product(range(self.shape[0]), range(self.shape[1]), range(self.shape[2])):
             yield indices, False
 
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:
@@ -446,9 +444,9 @@ class SymmetryN3S2Ket(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice, slice, slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -504,7 +502,7 @@ class SymmetryN3S2Ket(Symmetry[tuple[int, int, int], tuple[slice, slice, slice]]
             for j, k in itertools.combinations_with_replacement(range(self.shape[1]), 2):
                 yield (i, j, k), False
 
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:
@@ -522,9 +520,9 @@ class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice, slice, slice, slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -573,7 +571,7 @@ class SymmetryN4S1(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
         ):
             yield indices, False
 
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:
@@ -589,9 +587,9 @@ class SymmetryN4S4(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice, slice, slice, slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -655,7 +653,7 @@ class SymmetryN4S4(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
             for indices_cd in itertools.combinations_with_replacement(range(self.shape[2]), 2):
                 yield indices_ab + indices_cd, False
 
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:
@@ -675,9 +673,9 @@ class SymmetryN4S8(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
 
     def set_value[T: number](
         self,
-        array: array[tuple[int, ...], T],
+        array: array[T],
         indices: tuple[slice, slice, slice, slice],
-        value: array[tuple[int, ...], T],
+        value: array[T],
     ) -> None:
         """Set an array value according to the symmetry.
 
@@ -747,7 +745,7 @@ class SymmetryN4S8(Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice
         ):
             yield indices[0] + indices[1], False
 
-    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[tuple[int], number]) -> None:
+    def assert_symmetric_sequence(self, objects: Sequence[Comparable] | array[number]) -> None:
         """Check that a sequence of objects is valid under the symmetry.
 
         Args:

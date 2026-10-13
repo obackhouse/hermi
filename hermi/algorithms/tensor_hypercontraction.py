@@ -22,7 +22,7 @@ BLOCK_SIZE = 2048
 HILBERT_BITS = 16
 
 
-def _hilbert_argsort(points: array[tuple[int, int], float64], bits: int) -> array[tuple[int], np.int64]:
+def _hilbert_argsort(points: array[float64], bits: int) -> array[np.int64]:
     """Return indices that sort three-dimensional points along a Hilbert curve."""
     points = points - np.min(points, axis=0)
     extent = np.ptp(points, axis=0)
@@ -65,10 +65,10 @@ def _hilbert_argsort(points: array[tuple[int, int], float64], bits: int) -> arra
 
 
 def _grid_pivots(
-    values: array[tuple[int, int], float64],
+    values: array[float64],
     *,
     tolerance: float,
-) -> array[tuple[int], np.int64]:
+) -> array[np.int64]:
     """Select representative grid points using pivoted Cholesky decomposition."""
     overlap = values @ values.T
     pair_overlap = np.ascontiguousarray(overlap**2)
@@ -77,12 +77,12 @@ def _grid_pivots(
 
 
 def _select_grid_points(
-    values: array[tuple[int, int], float64],
-    order: array[tuple[int], np.int64],
+    values: array[float64],
+    order: array[np.int64],
     *,
     block_size: int,
     cholesky_tolerance: float,
-) -> array[tuple[int], np.int64]:
+) -> array[np.int64]:
     """Return indices of representative points in an iteratively pruned grid."""
     selected = order
 
@@ -114,7 +114,7 @@ def tensor_hypercontraction(
     cholesky_tolerance: float = 1e-10,
     metric_tolerance: float = 1e-12,
     regularization: float = 1e-12,
-) -> tuple[array[tuple[int, int], float64], array[tuple[int, int], float64]]:
+) -> tuple[array[float64], array[float64]]:
     r"""Construct a THC factorisation using the block tensor decomposition method.
 
     Args:

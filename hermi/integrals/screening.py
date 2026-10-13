@@ -109,7 +109,7 @@ class CauchySchwarzScreening(Screening[Literal[4]]):
     """
 
     basis: Basis
-    metric: array[tuple[int, int], float64]
+    metric: array[float64]
     threshold: float = 1e-6
     spherical: bool = False
 
@@ -120,7 +120,7 @@ class CauchySchwarzScreening(Screening[Literal[4]]):
         """Yield shell-pair view tuples that pass the Schwarz threshold."""
         num_functions = num_spherical_functions if self.spherical else num_cartesian_functions
 
-        def shell_pair_metric(view: ShellPairView) -> array[tuple[int, int], float64]:
+        def shell_pair_metric(view: ShellPairView) -> array[float64]:
             ao_metric = self.metric[self._ao_slices(view)]
             ao_metric = ao_metric.reshape(
                 view.shell_i.num_shells,
@@ -141,8 +141,8 @@ class CauchySchwarzScreening(Screening[Literal[4]]):
         def iter_pairs(
             view_ab: ShellPairView,
             view_cd: ShellPairView,
-            metric_ab: array[tuple[int, int], float64],
-            metric_cd: array[tuple[int, int], float64],
+            metric_ab: array[float64],
+            metric_cd: array[float64],
         ) -> Iterable[tuple[ShellPairView, ShellPairView]]:
             for i, j in np.ndindex(metric_ab.shape):
                 if metric_ab[i, j] == 0:
