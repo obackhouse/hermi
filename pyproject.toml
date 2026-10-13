@@ -15,6 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+numba = ["numba>=0.61.0"]
 dev = [
     "pytest>=7.4.0",
     "mypy>=1.18.0",
@@ -89,5 +90,5 @@ strict = true
 implicit_reexport = true
 
 [[tool.mypy.overrides]]
-module = ["basis_set_exchange.*"]
+module = ["basis_set_exchange.*", "numba.*"]
 ignore_missing_imports = true
