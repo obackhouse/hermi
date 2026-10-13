@@ -150,15 +150,14 @@ def contract_operator_10(
     """
     if expansion_a is None:
         expansion_a = Expansion(shell_a).compute(spherical=spherical)
-    coefficients = shell_a.coefficient
 
     # Align dimensions
     operator = np.expand_dims(operator, axis=0) if operator.ndim == 4 else operator  # a 1 p 1 -> n a 1 p 1
     expansion_a = np.expand_dims(expansion_a, axis=1 if expansion_a.ndim == 4 else (0, 2))  # a i p -> n a 1 i p
-    coefficients = np.expand_dims(coefficients, axis=(0, 2, 3, 4))  # a -> 1 a 1 1 1
+    coefficients_a = np.expand_dims(shell_a.coefficient, axis=(0, 2, 3, 4))  # a -> 1 a 1 1 1
 
-    # Apply the contraction coefficients
-    operator = operator * coefficients  # n a 1 p 1, n a 1 1 1 -> n a 1 p 1
+    # Apply the contraction coefficients to the expansion matrix
+    expansion_a = expansion_a * coefficients_a  # n a 1 i p, 1 a 1 1 1 -> n a 1 i p
 
     # Contract the operator with the expansion matrix
     contracted = expansion_a @ operator  # n a 1 i p, n a 1 p 1 -> n a 1 i 1
@@ -241,16 +240,17 @@ def contract_operator_11(
         expansion_a = Expansion(shell_a).compute(spherical=spherical)
     if expansion_b is None:
         expansion_b = Expansion(shell_b).compute(spherical=spherical)
-    coefficients = np.multiply.outer(shell_a.coefficient, shell_b.coefficient)
 
     # Align dimensions
     operator = np.expand_dims(operator, axis=0) if operator.ndim == 4 else operator  # a b p q -> n a b p q
     expansion_a = np.expand_dims(expansion_a, axis=1 if expansion_a.ndim == 4 else (0, 2))  # a p i -> n a 1 i p
     expansion_b = np.expand_dims(expansion_b, axis=0 if expansion_b.ndim == 4 else (0, 1))  # b q j -> n 1 b j q
-    coefficients = np.expand_dims(coefficients, axis=(0, 3, 4))  # a b -> 1 a b 1 1
+    coefficients_a = np.expand_dims(shell_a.coefficient, axis=(0, 2, 3, 4))  # a -> 1 a 1 1 1
+    coefficients_b = np.expand_dims(shell_b.coefficient, axis=(0, 1, 3, 4))  # b -> 1 1 b 1 1
 
-    # Apply the contraction coefficients
-    operator = operator * coefficients  # n a b p q, 1 a b 1 1 -> n a b p q
+    # Apply the contraction coefficients to the expansion matrices
+    expansion_a = expansion_a * coefficients_a  # n a 1 i p, 1 a 1 1 1 -> n a 1 i p
+    expansion_b = expansion_b * coefficients_b  # n 1 b j q, 1 1 b 1 1 -> n 1 b j q
 
     # Contract the operator with the right-hand expansion matrix
     contracted = operator @ expansion_b.mT  # n a b p q, n 1 b q j -> n a b p j
@@ -340,15 +340,16 @@ def contract_operator_22(
         expansion_ab = Expansion(pair_ab).compute(spherical=spherical)
     if expansion_cd is None:
         expansion_cd = Expansion(pair_cd).compute(spherical=spherical)
-    coefficients = np.multiply.outer(pair_ab.coefficient.ravel(), pair_cd.coefficient.ravel())
 
     # Align dimensions
     expansion_ab = np.expand_dims(expansion_ab, axis=1 if expansion_ab.ndim == 4 else (0, 2))  # ab ij p -> n ab 1 ij p
     expansion_cd = np.expand_dims(expansion_cd, axis=0 if expansion_cd.ndim == 4 else (0, 1))  # cd kl q -> n 1 cd kl q
-    coefficients = np.expand_dims(coefficients, axis=(0, 3, 4))  # ab cd -> 1 ab cd 1 1
+    coefficients_ab = np.expand_dims(pair_ab.coefficient.ravel(), axis=(0, 2, 3, 4))  # ab -> 1 ab 1 1 1
+    coefficients_cd = np.expand_dims(pair_cd.coefficient.ravel(), axis=(0, 1, 3, 4))  # cd -> 1 1 cd 1 1
 
-    # Apply the contraction coefficients
-    operator = operator * coefficients  # n ab cd p q, n ab cd 1 1 -> n ab cd p q
+    # Apply the contraction coefficients to the expansion matrices
+    expansion_ab = expansion_ab * coefficients_ab  # n ab 1 ij p, 1 ab 1 1 1 -> n ab 1 ij p
+    expansion_cd = expansion_cd * coefficients_cd  # n 1 cd kl q, 1 1 cd 1 1 -> n 1 cd kl q
 
     # Contract the operator with the right-hand expansion matrix
     contracted = operator @ expansion_cd.mT  # n ab cd p q, n 1 cd kl q -> n ab cd p kl
@@ -444,16 +445,17 @@ def contract_operator_12(
         expansion_a = Expansion(shell_a).compute(spherical=spherical)
     if expansion_bc is None:
         expansion_bc = Expansion(pair_bc).compute(spherical=spherical)
-    coefficients = np.multiply.outer(shell_a.coefficient, pair_bc.coefficient.ravel())
 
     # Align dimensions
     operator = np.expand_dims(operator, axis=0) if operator.ndim == 4 else operator  # a bc p q -> n a bc p q
     expansion_a = np.expand_dims(expansion_a, axis=1 if expansion_a.ndim == 4 else (0, 2))  # a i p -> n a 1 i p
     expansion_bc = np.expand_dims(expansion_bc, axis=0 if expansion_bc.ndim == 4 else (0, 1))  # bc jk q -> n 1 bc jk q
-    coefficients = np.expand_dims(coefficients, axis=(0, 3, 4))  # a bc -> 1 a bc 1 1
+    coefficients_a = np.expand_dims(shell_a.coefficient, axis=(0, 2, 3, 4))  # a -> 1 a 1 1 1
+    coefficients_bc = np.expand_dims(pair_bc.coefficient.ravel(), axis=(0, 1, 3, 4))  # bc -> 1 1 bc 1 1
 
-    # Apply the contraction coefficients
-    operator = operator * coefficients  # n a bc p q, 1 a bc 1 1 -> n a bc p q
+    # Apply the contraction coefficients to the expansion matrices
+    expansion_a = expansion_a * coefficients_a  # n a 1 i p, 1 a 1 1 1 -> n a 1 i p
+    expansion_bc = expansion_bc * coefficients_bc  # n 1 bc jk q, 1 1 bc 1 1 -> n 1 bc jk q
 
     # Contract the operator with the shell-pair expansion matrix
     contracted = operator @ expansion_bc.mT  # n a bc p q, n 1 bc q jk -> n a bc p jk
@@ -531,14 +533,13 @@ def contract_operator_20(
     """
     if expansion_ab is None:
         expansion_ab = Expansion(pair_ab).compute(spherical=spherical)
-    coefficients = pair_ab.coefficient.ravel()
 
     # Align dimensions
-    coefficients = np.expand_dims(coefficients, axis=(0, 2, 3, 4))  # ab -> 1 ab 1 1 1
     expansion_ab = np.expand_dims(expansion_ab, axis=2 if expansion_ab.ndim == 4 else (0, 2))  # ab ij p -> n ab 1 ij p
+    coefficients_ab = np.expand_dims(pair_ab.coefficient.ravel(), axis=(0, 2, 3, 4))  # ab -> 1 ab 1 1 1
 
-    # Apply the contraction coefficients
-    operator = operator * coefficients  # n ab 1 p 1, n ab 1 1 1 -> n ab 1 p 1
+    # Apply the contraction coefficients to the expansion matrix
+    expansion_ab = expansion_ab * coefficients_ab  # n ab 1 ij p, 1 ab 1 1 1 -> n ab 1 ij p
 
     # Contract the operator with the expansion matrix
     contracted = expansion_ab @ operator  # n ab 1 ij p, n ab 1 p 1 -> n ab 1 ij 1
