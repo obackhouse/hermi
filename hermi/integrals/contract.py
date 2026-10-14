@@ -9,6 +9,7 @@ import numpy as np
 
 from hermi.integrals.expansion import Expansion
 from hermi.utils.angular import num_cartesian_functions, num_spherical_functions
+from hermi.utils.linear_algebra import add_reduceat
 
 if TYPE_CHECKING:
     from numpy import float64
@@ -26,7 +27,7 @@ def _reduce_primitive[S: tuple[int, ...]](values: array[S, float64], shell: Shel
         len(shell),
         *values.shape[axis + 1 :],
     )
-    expanded = np.add.reduceat(expanded, shell.basis.contracted_shell_starts(shell.indices), axis=axis)
+    expanded = add_reduceat(expanded, shell.basis.contracted_shell_starts(shell.indices), axis=axis)
     expanded = expanded.reshape(
         *values.shape[:axis],
         shell.num_shells,
@@ -60,8 +61,8 @@ def _reduce_primitive_pair[S: tuple[int, ...]](
         )
         expanded = np.sum(expanded, axis=(axis + 1, axis + 3))
     else:
-        expanded = np.add.reduceat(expanded, starts_i, axis=axis)
-        expanded = np.add.reduceat(expanded, starts_j, axis=axis + 1)
+        expanded = add_reduceat(expanded, starts_i, axis=axis)
+        expanded = add_reduceat(expanded, starts_j, axis=axis + 1)
     expanded = expanded.reshape(
         *values.shape[:axis],
         pair.shell_i.num_shells * pair.shell_j.num_shells,
@@ -547,10 +548,9 @@ def contract_operator_20(
         contracted = np.sum(contracted, axis=0)  # n ab 1 ij 1 -> ab 1 ij 1
 
     # Reduce the a and b shell axes
-    if batch_dim:
-        contracted = _reduce_primitive_pair(contracted[:, :, 0, :, 0], pair_ab, axis=1)  # n ab ij -> n ab ij
-    else:
-        contracted = _reduce_primitive_pair(contracted[:, 0, :, 0], pair_ab, axis=0)  # ab ij -> ab ij
+    contracted = _reduce_primitive_pair(  # (n) ab ij -> (n) ab ij
+        contracted[..., 0, :, 0], pair_ab, axis=int(batch_dim)
+    )
 
     # Unpack the contracted result into the final integral array
     contracted = _unpack_from_shell_pair_major(  # ab ij -> ai bj
