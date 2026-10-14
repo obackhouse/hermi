@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from hermi.integrals.boys import boys
-from hermi.integrals.hermite import hermite_indices, hermite_integral_recursion
+from hermi.integrals.hermite import hermite_auxiliary_layout, hermite_indices, hermite_integral_recursion
 from hermi.integrals.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.operators.operator import Operator, check_views_rank
 from hermi.utils.linear_algebra import outer_powers
@@ -63,13 +63,14 @@ class Nuclear(Operator):
         argument = exponent * np.einsum("...x,...x->...", displacement, displacement, optimize=True)
         charges = self.molecule.charges
 
-        auxiliary = np.zeros((max_order + 1,) * 4 + (len(pair), len(self.molecule)), dtype=np.float64)
+        offsets, n_valid = hermite_auxiliary_layout(max_order)
+        auxiliary = np.empty((n_valid, len(pair), len(self.molecule)), dtype=np.float64)
 
         # Fundamental value
         fundamental = np.moveaxis(outer_powers(-2 * exponent, max_order) * boys(argument, max_order), -1, 0)
         fundamental /= exponent
         fundamental *= 2 * np.pi
-        auxiliary[0, 0, 0] = fundamental
+        auxiliary[: max_order + 1] = fundamental
 
         # Recursion for Hermite integrals
         hermite_integral_recursion(
@@ -82,7 +83,7 @@ class Nuclear(Operator):
 
         # Construct operator matrix
         indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
-        zero_order = np.moveaxis(auxiliary[*indices, 0], 0, -1)
+        zero_order = np.moveaxis(auxiliary[offsets[*indices]], 0, -1)
         operator = -np.expand_dims(np.einsum("...ah,a->...h", zero_order, charges), axis=(1, 3))
 
         return operator
