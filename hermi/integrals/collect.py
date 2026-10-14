@@ -30,9 +30,9 @@ if TYPE_CHECKING:
 
 def _get_ao_selection(
     ao_slice: slice,
-    indices: array[tuple[int], int64],
+    indices: array[int64],
     num_aos: int,
-) -> tuple[array[tuple[int], int64], array[tuple[int], int64], array[tuple[int], int64]]:
+) -> tuple[array[int64], array[int64], array[int64]]:
     """Get AO indices and the permutation to restore their original order.
 
     Args:
@@ -51,10 +51,10 @@ def _get_ao_selection(
 
 def _get_shell_selection(
     shell: ShellView,
-    selected_ordered: array[tuple[int], int64],
+    selected_ordered: array[int64],
     *,
     spherical: bool = False,
-) -> tuple[slice, array[tuple[int], int64]] | None:
+) -> tuple[slice, array[int64]] | None:
     """Get the output slice and local AO indices selected from a shell group.
 
     Args:
@@ -76,10 +76,10 @@ def _get_shell_selection(
 
 def _get_selected_shell_groups(
     shell_groups: Iterable[ShellView],
-    selected_ordered: array[tuple[int], int64],
+    selected_ordered: array[int64],
     *,
     spherical: bool = False,
-) -> list[tuple[ShellView, slice, array[tuple[int], int64]]]:
+) -> list[tuple[ShellView, slice, array[int64]]]:
     """Get the selected shell groups and their AO slices.
 
     Args:
@@ -106,7 +106,7 @@ def collect_integral_10(
     ao_slices: tuple[slice] = (slice(None),),
     symmetry_type: type[Symmetry[tuple[int], tuple[slice]]] | None = None,
     spherical: bool = False,
-) -> array[tuple[int], float64]:
+) -> array[float64]:
     """Collect contracted AO integrals for a (1, 0) integral.
 
     Args:
@@ -157,7 +157,7 @@ def collect_integral_11(
     ao_slices: tuple[slice, slice] = (slice(None), slice(None)),
     symmetry_type: type[Symmetry[tuple[int, int], tuple[slice, slice]]] | None = None,
     spherical: bool = False,
-) -> array[tuple[int, int], float64]:
+) -> array[float64]:
     """Collect contracted AO integrals for a (1, 1) integral.
 
     Args:
@@ -200,7 +200,7 @@ def collect_integral_11(
         shell_a, i, indices_a = shells[0][a]
         shell_b, j, indices_b = shells[1][b]
         block = operator.contract((shell_a, shell_b), spherical=spherical)
-        block = block[np.ix_(indices_a, indices_b)]
+        block = block[np.ix_(indices_a, indices_b)]  # type: ignore[arg-type]
         symmetry.set_value(matrix, (i, j), block)
 
     # Reorder the matrix back to the original basis order
@@ -216,7 +216,7 @@ def collect_integral_12(
     ao_slices: tuple[slice, slice, slice] = (slice(None), slice(None), slice(None)),
     symmetry_type: type[Symmetry[Any, Any]] | None = None,
     spherical: bool = False,
-) -> array[tuple[int, int, int], float64]:
+) -> array[float64]:
     """Collect contracted AO integrals for a (1, 2) integral.
 
     Args:
@@ -267,7 +267,7 @@ def collect_integral_12(
             )
         ]
         block = operator.contract((shell_a, pair), spherical=spherical)
-        block = block[np.ix_(indices_a, indices_b, indices_c)]
+        block = block[np.ix_(indices_a, indices_b, indices_c)]  # type: ignore[arg-type]
         symmetry.set_value(matrix, (i, j, k), block)
 
     # Reorder the matrix back to the original basis order
@@ -283,7 +283,7 @@ def collect_integral_20(
     ao_slices: tuple[slice, slice] = (slice(None), slice(None)),
     symmetry_type: type[Symmetry[tuple[int, int], tuple[slice, slice]]] | None = None,
     spherical: bool = False,
-) -> array[tuple[int, int], float64]:
+) -> array[float64]:
     """Collect contracted AO integrals for a (2, 0) integral.
 
     Args:
@@ -334,7 +334,7 @@ def collect_integral_20(
             )
         ]
         block = operator.contract((pair, None), spherical=spherical)
-        block = block[np.ix_(indices_a, indices_b)]
+        block = block[np.ix_(indices_a, indices_b)]  # type: ignore[arg-type]
         symmetry.set_value(matrix, (i, j), block)
 
     # Reorder the matrix back to the original basis order
@@ -350,7 +350,7 @@ def collect_integral_22(
     ao_slices: tuple[slice, slice, slice, slice] = (slice(None), slice(None), slice(None), slice(None)),
     symmetry_type: type[Symmetry[tuple[int, int, int, int], tuple[slice, slice, slice, slice]]] | None = None,
     spherical: bool = False,
-) -> array[tuple[int, int, int, int], float64]:
+) -> array[float64]:
     """Collect contracted AO integrals for a (2, 2) integral.
 
     Args:
@@ -418,7 +418,7 @@ def collect_integral_22(
             )
         ]
         block = operator.contract((pair_ab, pair_cd), spherical=spherical)
-        block = block[np.ix_(indices_a, indices_b, indices_c, indices_d)]
+        block = block[np.ix_(indices_a, indices_b, indices_c, indices_d)]  # type: ignore[arg-type]
         symmetry.set_value(matrix, (i, j, k, l), block)
 
     # Reorder the matrix back to the original basis order
@@ -434,7 +434,7 @@ def collect_batched_integral_10(
     ao_slices: tuple[slice] = (slice(None),),
     symmetry_type: type[Symmetry[tuple[int], tuple[slice]]] | None = None,
     spherical: bool = False,
-) -> array[tuple[int, int], float64]:
+) -> array[float64]:
     """Collect contracted AO integrals for a batched (1, 0) integral.
 
     Args:

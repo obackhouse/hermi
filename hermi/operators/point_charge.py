@@ -33,7 +33,7 @@ class PointCharge(Operator):
         \hat{O} = \frac{1}{|r - r_x|}.
     """
 
-    position: array[tuple[int], float64] | array[tuple[int, int], float64]
+    position: array[float64]
 
     def get_default_signature(
         self,

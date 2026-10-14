@@ -14,16 +14,12 @@ if TYPE_CHECKING:
 
     from hermi._typing import array
 
-    type NumbaAddReduceatKernel = Callable[
-        [array[tuple[int, int, int], float64], array[tuple[int], int64]], array[tuple[int, int, int], float64]
-    ]
+    type NumbaAddReduceatKernel = Callable[[array[float64], array[int64]], array[float64]]
 
 NUMBA_REDUCEAT_MIN_ELEMENTS = 32_768
 
 
-def _add_reduceat_numpy(
-    values: array[tuple[int, ...], float64], indices: array[tuple[int], int64], axis: int = 0
-) -> array[tuple[int, ...], float64]:
+def _add_reduceat_numpy(values: array[float64], indices: array[int64], axis: int = 0) -> array[float64]:
     """Sum slices of an array using NumPy's ``reduceat`` implementation."""
     return np.add.reduceat(values, indices, axis=axis)
 
@@ -36,9 +32,7 @@ def _get_numba_add_reduceat() -> NumbaAddReduceatKernel | None:
     except ImportError:
         return None
 
-    def _add_reduceat_kernel(
-        values: array[tuple[int, int, int], float64], indices: array[tuple[int], int64]
-    ) -> array[tuple[int, int, int], float64]:
+    def _add_reduceat_kernel(values: array[float64], indices: array[int64]) -> array[float64]:
         """Sum segments along the middle axis of an ``(N, M, K)`` array."""
         result = np.empty((values.shape[0], indices.size, values.shape[2]), dtype=values.dtype)
         for group in prange(indices.size):
@@ -55,9 +49,7 @@ def _get_numba_add_reduceat() -> NumbaAddReduceatKernel | None:
     return njit(cache=True, nogil=True, parallel=True)(_add_reduceat_kernel)  # type: ignore[no-any-return]
 
 
-def _add_reduceat_numba(
-    values: array[tuple[int, ...], float64], indices: array[tuple[int], int64], axis: int = 0
-) -> array[tuple[int, ...], float64]:
+def _add_reduceat_numba(values: array[float64], indices: array[int64], axis: int = 0) -> array[float64]:
     """Sum slices after reshaping the array around the reduced axis."""
     reducer = _get_numba_add_reduceat()
     assert reducer is not None
@@ -70,9 +62,7 @@ def _add_reduceat_numba(
     return result.reshape((*shape[:axis], indices.size, *shape[axis + 1 :]))
 
 
-def add_reduceat(
-    values: array[tuple[int, ...], float64], indices: array[tuple[int], int64], axis: int = 0
-) -> array[tuple[int, ...], float64]:
+def add_reduceat(values: array[float64], indices: array[int64], axis: int = 0) -> array[float64]:
     """Sum consecutive segments along an axis, using Numba for sufficiently large arrays.
 
     Args:
@@ -93,9 +83,9 @@ def add_reduceat(
 
 
 def outer_powers(
-    base: array[tuple[int, ...], float64],
+    base: array[float64],
     max_order: int,
-) -> array[tuple[int, ...], float64]:
+) -> array[float64]:
     """Compute consecutive integer powers of each base value, optionally scaled.
 
     Args:

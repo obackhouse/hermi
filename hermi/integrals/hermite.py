@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -27,26 +27,6 @@ def hermite_indices(max_order: int) -> list[tuple[int, int, int]]:
     ]
 
 
-@overload
-def hermite_operator_matrix_indices(
-    angular_momentum_i: int,
-    angular_momentum_j: int,
-    *,
-    shifts: None = None,
-    sign_side: Literal["bra", "ket"] = "ket",
-) -> tuple[array[tuple[int, int], int64], array[tuple[int], float64]]: ...
-
-
-@overload
-def hermite_operator_matrix_indices(
-    angular_momentum_i: int,
-    angular_momentum_j: int,
-    *,
-    shifts: tuple[tuple[int, int, int], ...],
-    sign_side: Literal["bra", "ket"] = "ket",
-) -> tuple[array[tuple[int, int, int], int64], array[tuple[int], float64]]: ...
-
-
 @lru_cache(maxsize=None)
 def hermite_operator_matrix_indices(
     angular_momentum_i: int,
@@ -55,8 +35,8 @@ def hermite_operator_matrix_indices(
     shifts: tuple[tuple[int, int, int], ...] | None = None,
     sign_side: Literal["bra", "ket"] = "ket",
 ) -> tuple[
-    array[tuple[int, int], int64] | array[tuple[int, int, int], int64],
-    array[tuple[int], float64],
+    array[int64],
+    array[float64],
 ]:
     r"""Map pairs of Hermite indices to operator indices and return parity signs.
 
@@ -100,14 +80,14 @@ def hermite_operator_matrix_indices(
     return indices, signs
 
 
-def hermite_integral_recursion_zero_order[S: tuple[int, ...]](
-    auxiliary: array[S, float64],
+def hermite_integral_recursion_zero_order(
+    auxiliary: array[float64],
     max_order: int,
-    x: array[tuple[int, ...], float64],
-    y: array[tuple[int, ...], float64],
-    z: array[tuple[int, ...], float64],
-    scale: array[tuple[int, ...], float64] | float = 1.0,
-) -> array[S, float64]:
+    x: array[float64],
+    y: array[float64],
+    z: array[float64],
+    scale: array[float64] | float = 1.0,
+) -> array[float64]:
     r"""Recursively compute zeroth-order Hermite integrals :math:`R^{tuv}` from the fundamental value :math:`R^{000}`.
 
     Args:
@@ -146,14 +126,14 @@ def hermite_integral_recursion_zero_order[S: tuple[int, ...]](
     return auxiliary
 
 
-def hermite_integral_recursion[S: tuple[int, ...]](
-    auxiliary: array[S, float64],
+def hermite_integral_recursion(
+    auxiliary: array[float64],
     max_order: int,
-    x: array[tuple[int, ...], float64],
-    y: array[tuple[int, ...], float64],
-    z: array[tuple[int, ...], float64],
-    scale: array[tuple[int, ...], float64] | float = 1.0,
-) -> array[S, float64]:
+    x: array[float64],
+    y: array[float64],
+    z: array[float64],
+    scale: array[float64] | float = 1.0,
+) -> array[float64]:
     r"""Recursively compute Hermite integrals :math:`R_n^{tuv}` from the fundamental value :math:`R_n^{000}`.
 
     Args:

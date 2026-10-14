@@ -64,7 +64,7 @@ class Molecule(DefaultHash):
     elements: list[Element]
 
     #: Positions of the atoms
-    positions: array[tuple[int, int], float64]
+    positions: array[float64]
 
     def __post_init__(self) -> None:
         if len(self.elements) != self.positions.shape[0]:
@@ -79,7 +79,7 @@ class Molecule(DefaultHash):
     def from_list(
         cls,
         elements: list[str] | list[Element],
-        positions: array[tuple[int, int], float64] | list[list[float]],
+        positions: array[float64] | list[list[float]],
         units: Literal["angstrom", "bohr"] = "angstrom",
     ) -> Molecule:
         """Create a molecule from a list of elements and positions."""
@@ -106,7 +106,7 @@ class Molecule(DefaultHash):
             parts = line.split()
             elements.append(periodic_table.find(symbol=parts[0]))
             coordinates.append(tuple(map(float, parts[1:4])))
-        positions: array[tuple[int, int], float64] = np.array(coordinates, dtype=np.float64)
+        positions: array[float64] = np.array(coordinates, dtype=np.float64)
         if units == "angstrom":
             positions *= ANGSTROM_TO_BOHR
         return Molecule(elements=elements, positions=positions)
@@ -117,7 +117,7 @@ class Molecule(DefaultHash):
         return [element.symbol for element in self.elements]
 
     @cached_property
-    def charges(self) -> array[tuple[int], int64]:
+    def charges(self) -> array[int64]:
         """Atomic charges."""
         return np.array([element.atomic_charge for element in self.elements], dtype=np.int64)
 

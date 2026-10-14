@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
     from hermi._typing import array
 
-    type ExpansionMatrix = array[tuple[int, int, int], float64] | array[tuple[int, int, int, int], float64]
-    type WeightArray = array[tuple[int, int, int], float64]
+    type ExpansionMatrix = array[float64]
+    type WeightArray = array[float64]
     type WeightMap = Mapping[tuple[Literal["bra", "ket"], int], WeightArray]
 
 
@@ -407,7 +407,7 @@ def expansion_coefficients(
     *,
     angular_momentum: int | None = None,
     max_order: int | None = None,
-) -> array[tuple[int, int, int], float64]:
+) -> array[float64]:
     r"""Compute one-dimensional Hermite expansion coefficients :math:`E_t^i`.
 
     Args:
@@ -428,8 +428,8 @@ def expansion_coefficients(
     half_reciprocal_exponent = np.expand_dims(0.5 / shell.exponent, axis=-1)
 
     def raise_coefficient(
-        source: array[tuple[int, int, int], float64],
-        target: array[tuple[int, int, int], float64],
+        source: array[float64],
+        target: array[float64],
     ) -> None:
         """Raise coefficients along the shell angular-momentum index.
 
@@ -460,7 +460,7 @@ def expansion_pair_coefficients(
     angular_momentum_i: int | None = None,
     angular_momentum_j: int | None = None,
     max_order: int | None = None,
-) -> array[tuple[int, int, int, int, int], float64]:
+) -> array[float64]:
     r"""Compute one-dimensional Hermite expansion pair coefficients :math:`E_t^{ij}`.
 
     Args:
@@ -491,9 +491,9 @@ def expansion_pair_coefficients(
     offset_b = pair.position[..., axis] - pair.shell_j.position[..., axis][None, :]
 
     def raise_coefficient(
-        source: array[tuple[int, int, int], float64],
-        target: array[tuple[int, int, int], float64],
-        offset: array[tuple[int, int], float64],
+        source: array[float64],
+        target: array[float64],
+        offset: array[float64],
     ) -> None:
         """Raise coefficients along one shell angular-momentum index.
 
@@ -546,7 +546,7 @@ def _compute_shell(
     cartesian = cartesian_indices(angular_momentum)
     indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
     coefficients = np.zeros((len(shell), len(indices[0]), len(cartesian)), dtype=np.float64)
-    tables: dict[tuple[int, int], array[tuple[int, int, int], float64]] = {}
+    tables: dict[tuple[int, int], array[float64]] = {}
 
     # Compute the expansion coefficients along each Cartesian axis
     for plan in plans:
@@ -595,7 +595,7 @@ def _compute_shell_pair(
     cartesian_j = cartesian_indices(angular_momentum_j)
     indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
     coefficients = np.zeros((len(pair), len(indices[0]), len(cartesian_i) * len(cartesian_j)), dtype=np.float64)
-    tables: dict[tuple[int, int, int], array[tuple[int, int, int, int, int], float64]] = {}
+    tables: dict[tuple[int, int, int], array[float64]] = {}
 
     # Compute the expansion coefficients along each Cartesian axis
     for plan in plans:

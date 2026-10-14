@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from hermi.systems.molecule import Molecule
 
 
-def _radial_grid(order: int, scale: float) -> tuple[array[tuple[int], float64], array[tuple[int], float64]]:
+def _radial_grid(order: int, scale: float) -> tuple[array[float64], array[float64]]:
     r"""Generate a radial quadrature grid using Gauss-Legendre quadrature on a rational map.
 
     The rational map is given by
@@ -47,7 +47,7 @@ def _radial_grid(order: int, scale: float) -> tuple[array[tuple[int], float64], 
     return radius, weights
 
 
-def _angular_grid(order: int) -> tuple[array[tuple[int], float64], array[tuple[int], float64]]:
+def _angular_grid(order: int) -> tuple[array[float64], array[float64]]:
     r"""Generate an angular quadrature grid using a product of Gauss-Legendre and equally spaced azimuthal points.
 
     The polar Gauss-Legendre points are given by the roots of the Legendre polynomial of degree ``order``.
@@ -72,15 +72,15 @@ def _angular_grid(order: int) -> tuple[array[tuple[int], float64], array[tuple[i
         axis=-1,
     ).reshape((-1, 3))
     weights = np.broadcast_to(weights[:, None] * (2 * np.pi / azimuth_count), polar_grid.shape).ravel()
-    return directions, weights  # type: ignore[return-value]
+    return directions, weights
 
 
 @dataclass(frozen=True, eq=False, slots=True)
 class MolecularGrid(DefaultHash):
     """Atom-centred molecular quadrature grid."""
 
-    points: array[tuple[int, int], float64]
-    weights: array[tuple[int], float64]
+    points: array[float64]
+    weights: array[float64]
 
     def __post_init__(self) -> None:
         if self.points.ndim != 2 or self.points.shape[1] != 3:

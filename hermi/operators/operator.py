@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from hermi.integrals.symmetry import Symmetry
     from hermi.systems.basis import Basis
 
-    type OperatorMatrix = array[tuple[int, int, int, int], float64] | array[tuple[int, int, int, int, int], float64]
+    type OperatorMatrix = array[float64]
     type View = None | ShellView | ShellPairView
 
 
@@ -262,26 +262,8 @@ class Operator(ABC):
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellView, None] | tuple[None, ShellView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-        batch_dim: Literal[True],
-    ) -> array[tuple[int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellView, None] | tuple[None, ShellView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-        batch_dim: bool,
-    ) -> array[tuple[int], float64] | array[tuple[int, int], float64]: ...
+        batch_dim: bool = False,
+    ) -> array[float64]: ...
     @overload
     def contract(
         self,
@@ -289,26 +271,8 @@ class Operator(ABC):
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellView, ShellView] | tuple[ShellPairView, None] | tuple[None, ShellPairView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-        batch_dim: Literal[True],
-    ) -> array[tuple[int, int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellView, ShellView] | tuple[ShellPairView, None] | tuple[None, ShellPairView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-        batch_dim: bool,
-    ) -> array[tuple[int, int], float64] | array[tuple[int, int, int], float64]: ...
+        batch_dim: bool = False,
+    ) -> array[float64]: ...
     @overload
     def contract(
         self,
@@ -316,26 +280,8 @@ class Operator(ABC):
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int, int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellView, ShellPairView] | tuple[ShellPairView, ShellView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-        batch_dim: Literal[True],
-    ) -> array[tuple[int, int, int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellView, ShellPairView] | tuple[ShellPairView, ShellView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-        batch_dim: bool,
-    ) -> array[tuple[int, int, int], float64] | array[tuple[int, int, int, int], float64]: ...
+        batch_dim: bool = False,
+    ) -> array[float64]: ...
     @overload
     def contract(
         self,
@@ -343,26 +289,8 @@ class Operator(ABC):
         operator: OperatorMatrix | None = None,
         *,
         spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int, int, int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellPairView, ShellPairView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-        batch_dim: Literal[True],
-    ) -> array[tuple[int, int, int, int, int], float64]: ...
-    @overload
-    def contract(
-        self,
-        views: tuple[ShellPairView, ShellPairView],
-        operator: OperatorMatrix | None = None,
-        *,
-        spherical: bool = False,
-        batch_dim: bool,
-    ) -> array[tuple[int, int, int, int], float64] | array[tuple[int, int, int, int, int], float64]: ...
+        batch_dim: bool = False,
+    ) -> array[float64]: ...
 
     def contract(
         self,
@@ -372,7 +300,7 @@ class Operator(ABC):
         *,
         spherical: bool = False,
         batch_dim: bool = False,
-    ) -> array[tuple[int, ...], float64]:
+    ) -> array[float64]:
         r"""Contract the operator matrix with the expansion coefficients and reduce primitives.
 
         Args:
@@ -404,95 +332,6 @@ class Operator(ABC):
             f"contraction for operator {self.__class__.__name__} with views {views} not implemented."
         )
 
-    @overload
-    def collect(
-        self,
-        basis: Basis,
-        signature: None = None,
-        symmetry_type: type[Symmetry[Any, Any]] | None = None,
-        *,
-        ao_slices: tuple[slice, ...] | None = None,
-        spherical: bool = False,
-        batch_dim: bool = False,
-    ) -> array[tuple[int, ...], float64]: ...
-    @overload
-    def collect(
-        self,
-        basis: Basis,
-        signature: tuple[Literal[1], Literal[0]],
-        symmetry_type: type[Symmetry[Any, Any]] | None = None,
-        *,
-        ao_slices: tuple[slice, ...] | None = None,
-        spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int], float64]: ...
-    @overload
-    def collect(
-        self,
-        basis: Basis,
-        signature: tuple[Literal[1], Literal[0]],
-        symmetry_type: type[Symmetry[Any, Any]] | None = None,
-        *,
-        ao_slices: tuple[slice, ...] | None = None,
-        spherical: bool = False,
-        batch_dim: Literal[True],
-    ) -> array[tuple[int, int], float64]: ...
-    @overload
-    def collect(
-        self,
-        basis: Basis,
-        signature: tuple[Literal[1], Literal[0]],
-        symmetry_type: type[Symmetry[Any, Any]] | None = None,
-        *,
-        ao_slices: tuple[slice, ...] | None = None,
-        spherical: bool = False,
-        batch_dim: bool,
-    ) -> array[tuple[int], float64] | array[tuple[int, int], float64]: ...
-    @overload
-    def collect(
-        self,
-        basis: Basis,
-        signature: tuple[Literal[0], Literal[1]],
-        symmetry_type: type[Symmetry[Any, Any]] | None = None,
-        *,
-        ao_slices: tuple[slice, ...] | None = None,
-        spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int], float64]: ...
-    @overload
-    def collect(
-        self,
-        basis: Basis,
-        signature: tuple[Literal[0], Literal[2]] | tuple[Literal[2], Literal[0]] | tuple[Literal[1], Literal[1]],
-        symmetry_type: type[Symmetry[Any, Any]] | None = None,
-        *,
-        ao_slices: tuple[slice, ...] | None = None,
-        spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int, int], float64]: ...
-    @overload
-    def collect(
-        self,
-        basis: Basis,
-        signature: tuple[Literal[1], Literal[2]] | tuple[Literal[2], Literal[1]],
-        symmetry_type: type[Symmetry[Any, Any]] | None = None,
-        *,
-        ao_slices: tuple[slice, ...] | None = None,
-        spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int, int, int], float64]: ...
-    @overload
-    def collect(
-        self,
-        basis: Basis,
-        signature: tuple[Literal[2], Literal[2]],
-        symmetry_type: type[Symmetry[Any, Any]] | None = None,
-        *,
-        ao_slices: tuple[slice, ...] | None = None,
-        spherical: bool = False,
-        batch_dim: Literal[False] = False,
-    ) -> array[tuple[int, int, int, int], float64]: ...
-
     def collect(
         self,
         basis: Basis,
@@ -502,7 +341,7 @@ class Operator(ABC):
         ao_slices: tuple[slice, ...] | None = None,
         spherical: bool = False,
         batch_dim: bool = False,
-    ) -> array[tuple[int, ...], float64]:
+    ) -> array[float64]:
         r"""Collect contracted AO integrals for the operator.
 
         Args:

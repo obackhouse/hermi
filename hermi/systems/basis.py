@@ -29,13 +29,13 @@ if TYPE_CHECKING:
 class Shells(DefaultHash):
     """Primitive shell data with coefficients for unnormalized radial Gaussians."""
 
-    position: array[tuple[int, int], float64]
-    exponent: array[tuple[int], float64]
-    coefficient: array[tuple[int], float64]
-    angular_momentum: array[tuple[int], int64]
-    shell_indices: array[tuple[int], int64]
+    position: array[float64]
+    exponent: array[float64]
+    coefficient: array[float64]
+    angular_momentum: array[int64]
+    shell_indices: array[int64]
 
-    def ordered_by_indices(self, order: array[tuple[int], int64]) -> Shells:
+    def ordered_by_indices(self, order: array[int64]) -> Shells:
         """Return a copy of the shell data ordered by a given index array.
 
         Args:
@@ -57,13 +57,13 @@ class Shells(DefaultHash):
 class ShellPairs(DefaultHash):
     """Basis data for primitive shell pairs."""
 
-    position: array[tuple[int, int, int], float64]
-    vector: array[tuple[int, int, int], float64]
-    exponent: array[tuple[int, int], float64]
-    reduced_exponent: array[tuple[int, int], float64]
-    coefficient: array[tuple[int, int], float64]
-    attenuation: array[tuple[int, int, int], float64]
-    angular_momentum: array[tuple[int, int], int64]
+    position: array[float64]
+    vector: array[float64]
+    exponent: array[float64]
+    reduced_exponent: array[float64]
+    coefficient: array[float64]
+    attenuation: array[float64]
+    angular_momentum: array[int64]
 
     @classmethod
     def from_shells(cls, shells: Shells) -> ShellPairs:
@@ -94,7 +94,7 @@ class ShellPairs(DefaultHash):
             angular_momentum=angular_momentum,
         )
 
-    def ordered_by_indices(self, order_i: array[tuple[int], int64], order_j: array[tuple[int], int64]) -> ShellPairs:
+    def ordered_by_indices(self, order_i: array[int64], order_j: array[int64]) -> ShellPairs:
         """Return a copy of the shell-pair data ordered by given index arrays.
 
         Args:
@@ -159,7 +159,7 @@ class Basis(DefaultHash):
         atomic_charges = list(dict.fromkeys(element.atomic_charge for element in molecule.elements))
         basis_data = bse.get_basis(basis_set, elements=atomic_charges)
 
-        positions: list[array[tuple[int], float64]] = []
+        positions: list[array[float64]] = []
         exponents: list[float] = []
         coefficients: list[float] = []
         angular_momenta: list[int] = []
@@ -253,11 +253,11 @@ class Basis(DefaultHash):
 
     def evaluate(
         self,
-        points: array[tuple[int, int], float64],
+        points: array[float64],
         *,
         ao_slice: slice = slice(None),
         spherical: bool = False,
-    ) -> array[tuple[int, int], float64]:
+    ) -> array[float64]:
         """Evaluate contracted basis functions at points.
 
         Args:
@@ -302,7 +302,7 @@ class Basis(DefaultHash):
         shell_starts = self.contracted_shell_starts(slice(None))
         return int(np.sum(num_spherical_functions(self.shells.angular_momentum[shell_starts])))
 
-    def contracted_shell_starts(self, indices: slice) -> array[tuple[int], int64]:
+    def contracted_shell_starts(self, indices: slice) -> array[int64]:
         """Return local primitive offsets where contracted shells begin."""
         _, starts = np.unique(self.shells.shell_indices[indices], return_index=True)
         return np.sort(starts)
@@ -419,7 +419,7 @@ class Basis(DefaultHash):
             yield from screening(shell_pair)
 
     @lru_cache(maxsize=None)
-    def ordered_by_angular_momentum(self, spherical: bool = False) -> tuple[Basis, array[tuple[int], int64]]:
+    def ordered_by_angular_momentum(self, spherical: bool = False) -> tuple[Basis, array[int64]]:
         """Return a copy of the basis ordered by angular momentum.
 
         Args:
@@ -504,17 +504,17 @@ class ShellView:
     indices: slice
 
     @property
-    def position(self) -> array[tuple[int, int], float64]:
+    def position(self) -> array[float64]:
         """Primitive centers for the selected shell."""
         return self.basis.shells.position[self.indices]
 
     @property
-    def exponent(self) -> array[tuple[int], float64]:
+    def exponent(self) -> array[float64]:
         """Primitive exponents for the selected shell."""
         return self.basis.shells.exponent[self.indices]
 
     @property
-    def coefficient(self) -> array[tuple[int], float64]:
+    def coefficient(self) -> array[float64]:
         """Contraction coefficients for the selected primitive shells."""
         return self.basis.shells.coefficient[self.indices]
 
@@ -538,7 +538,7 @@ class ShellView:
         """Number of contracted shells in the view."""
         return self.basis.num_contracted_shells_in(self.indices)
 
-    def iter_masked_views(self, mask: array[tuple[int], bool_]) -> Iterable[ShellView]:
+    def iter_masked_views(self, mask: array[bool_]) -> Iterable[ShellView]:
         """Yield contiguous shell views selected by a one-dimensional mask."""
         if mask.shape != (self.num_shells,):
             raise ValueError(f"mask must have shape ({self.num_shells},)")
@@ -582,7 +582,7 @@ def _individual_shell_views(view: ShellView) -> Iterable[ShellView]:
         yield view.basis[shell_slice]
 
 
-def _true_runs(mask: array[tuple[int], bool_]) -> list[tuple[int, int]]:
+def _true_runs(mask: array[bool_]) -> list[tuple[int, int]]:
     """Return half-open intervals of consecutive true values."""
     runs = []
     start = None
@@ -629,32 +629,32 @@ class ShellPairView:
         return self.shell_j.indices
 
     @property
-    def position(self) -> array[tuple[int, int, int], float64]:
+    def position(self) -> array[float64]:
         """Product centers for the selected primitive pairs."""
         return self.shell_pairs.position[self.indices_i, self.indices_j]
 
     @property
-    def vector(self) -> array[tuple[int, int, int], float64]:
+    def vector(self) -> array[float64]:
         """Center differences for the selected primitive pairs."""
         return self.shell_pairs.vector[self.indices_i, self.indices_j]
 
     @property
-    def exponent(self) -> array[tuple[int, int], float64]:
+    def exponent(self) -> array[float64]:
         """Combined exponents for the selected primitive pairs."""
         return self.shell_pairs.exponent[self.indices_i, self.indices_j]
 
     @property
-    def reduced_exponent(self) -> array[tuple[int, int], float64]:
+    def reduced_exponent(self) -> array[float64]:
         """Reduced exponents for the selected primitive pairs."""
         return self.shell_pairs.reduced_exponent[self.indices_i, self.indices_j]
 
     @property
-    def coefficient(self) -> array[tuple[int, int], float64]:
+    def coefficient(self) -> array[float64]:
         """Products of primitive coefficients for the selected pairs."""
         return self.shell_pairs.coefficient[self.indices_i, self.indices_j]
 
     @property
-    def attenuation(self) -> array[tuple[int, int, int], float64]:
+    def attenuation(self) -> array[float64]:
         """Axis-separated pair attenuation for the selected pairs."""
         return self.shell_pairs.attenuation[self.indices_i, self.indices_j]
 
@@ -673,7 +673,7 @@ class ShellPairView:
         """Slices of contracted real spherical atomic orbitals for the selected shell pair."""
         return self.shell_i.spherical_ao_slice, self.shell_j.spherical_ao_slice
 
-    def iter_masked_views(self, mask: array[tuple[int, int], bool_]) -> Iterable[ShellPairView]:
+    def iter_masked_views(self, mask: array[bool_]) -> Iterable[ShellPairView]:
         """Yield rectangular shell-pair views containing only true mask entries."""
         shape = (self.shell_i.num_shells, self.shell_j.num_shells)
         if mask.shape != shape:

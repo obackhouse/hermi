@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from hermi._typing import array
 
 
-def boys(argument: array[tuple[int, ...], float64], max_order: int) -> array[tuple[int, ...], float64]:
+def boys(argument: array[float64], max_order: int) -> array[float64]:
     r"""Compute Boys function values through ``max_order``.
 
     Args:
@@ -64,7 +64,7 @@ def boys(argument: array[tuple[int, ...], float64], max_order: int) -> array[tup
     return values
 
 
-def _interpolate(argument: array[tuple[int, ...], float64], order: int) -> array[tuple[int, ...], float64]:
+def _interpolate(argument: array[float64], order: int) -> array[float64]:
     """Interpolate the Boys function value using a precomputed table."""
     scaled_argument = argument * BOYS_RESOLUTION
     grid_index = (scaled_argument + 0.5).astype(np.intp)
@@ -78,9 +78,9 @@ def _interpolate(argument: array[tuple[int, ...], float64], order: int) -> array
     return value  # type: ignore[no-any-return]
 
 
-def _long_range(argument: array[tuple[int, ...], float64], order: int) -> array[tuple[int, ...], float64]:
+def _long_range(argument: array[float64], order: int) -> array[float64]:
     """Compute the Boys function value using the long-range approximation."""
-    value: array[tuple[int, ...], float64] = np.sqrt(np.pi) / (2 * np.sqrt(argument))
+    value: array[float64] = np.sqrt(np.pi) / (2 * np.sqrt(argument))
     for current_order in range(order):
         value *= (2 * current_order + 1) / (2 * argument)
     return value

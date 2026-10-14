@@ -7,7 +7,7 @@ from typing import Protocol, Self
 from numpy import ndarray, float64, int64, dtype, generic
 
 
-type array[S: tuple[int, ...], T: generic] = ndarray[S, dtype[T]]
+type array[T: generic] = ndarray[tuple[int, ...], dtype[T]]
 
 
 class Comparable(Protocol):

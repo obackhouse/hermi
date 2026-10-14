@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 
 
 def _decompose_potential(
-    matrix: array[tuple[int, int], float64],
+    matrix: array[float64],
     *,
     threshold: float = 1e-10,
-) -> array[tuple[int, int], float64]:
+) -> array[float64]:
     r"""Decompose the potential matrix using Cholesky decomposition.
 
     Finds the matrix :math:`V` satisfying
@@ -42,7 +42,7 @@ def _decompose_potential(
     return result
 
 
-def density_fit(ao_basis: Basis, aux_basis: Basis, *, spherical: bool = False) -> array[tuple[int, int, int], float64]:
+def density_fit(ao_basis: Basis, aux_basis: Basis, *, spherical: bool = False) -> array[float64]:
     """Prepare density fitting integrals.
 
     Args:
@@ -68,6 +68,6 @@ def density_fit(ao_basis: Basis, aux_basis: Basis, *, spherical: bool = False) -
     decomposed_matrix = _decompose_potential(matrix11)
 
     # Compute the density fitting integrals
-    matrix: array[tuple[int, int, int], float64] = np.einsum("PQ,Pij->Qij", decomposed_matrix, matrix12, optimize=True)
+    matrix: array[float64] = np.einsum("PQ,Pij->Qij", decomposed_matrix, matrix12, optimize=True)
 
     return matrix
