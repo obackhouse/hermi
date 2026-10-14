@@ -12,7 +12,8 @@ import numpy as np
 from hermi.integrals.screening import NoScreening
 from hermi.integrals.symmetry import SymmetryN2S1, SymmetryN2S2
 from hermi.systems.evaluate import evaluate_basis
-from hermi.util import DefaultHash, num_cartesian_functions, num_spherical_functions
+from hermi.utils.angular import num_cartesian_functions, num_spherical_functions
+from hermi.utils.misc import DefaultHash
 
 if TYPE_CHECKING:
     from typing import Iterable, Literal

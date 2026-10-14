@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.optimize import brentq
 
-from hermi.util import cartesian_indices, cartesian_normalization, cartesian_to_spherical, iter_slices, outer_powers
+from hermi.utils.angular import cartesian_indices, cartesian_normalization, cartesian_to_spherical
+from hermi.utils.linear_algebra import outer_powers
+from hermi.utils.slices import iter_slices
 
 if TYPE_CHECKING:
     from numpy import float64
