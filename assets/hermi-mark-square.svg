@@ -2,8 +2,8 @@
   <title id="title">Hermi square mark</title>
   <desc id="desc">The grid symbol from the Hermi logo, without the wordmark.</desc>
   <g transform="translate(-22.5 -18.5) scale(1.35)">
-    <g fill="none" stroke="#c4d2d1" stroke-width="2">
-      <path d="M25 35H103M25 61H103M25 87H103M25 35V87M51 35V87M77 35V87M103 35V87"/>
+    <g fill="none" stroke="#c4d2d1" stroke-width="2" stroke-linejoin="round">
+      <path d="M25 35H103V87H25ZM51 34.5V87.5M77 34.5V87.5M24.5 61H103.5"/>
     </g>
     <path d="M51 61H77" stroke="#177f79" stroke-width="4" stroke-linecap="round"/>
     <circle cx="51" cy="61" r="8" fill="#ffffff" stroke="#15343b" stroke-width="3"/>
