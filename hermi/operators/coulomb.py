@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from hermi.integrals.boys import boys
-from hermi.integrals.hermite import hermite_indices, hermite_integral_recursion, hermite_operator_matrix_indices
+from hermi.integrals.hermite import (
+    hermite_auxiliary_layout,
+    hermite_indices,
+    hermite_integral_recursion,
+    hermite_operator_matrix_indices,
+)
 from hermi.integrals.symmetry import (
     SymmetryN2S1,
     SymmetryN2S2,
@@ -88,14 +93,15 @@ class Coulomb(Operator):
         exponent = exponent_product / exponent_sum
         argument = np.einsum("...,...x,...x->...", exponent, displacement, displacement, optimize=True)
 
-        auxiliary = np.zeros((max_order + 1,) * 4 + (exponent_a.size, exponent_b.size), dtype=np.float64)
+        offsets, n_valid = hermite_auxiliary_layout(max_order)
+        auxiliary = np.empty((n_valid, exponent_a.size, exponent_b.size), dtype=np.float64)
 
         # Fundamental value
         fundamental = np.moveaxis(outer_powers(-2 * exponent, max_order) * boys(argument, max_order), -1, 0)
         fundamental /= exponent_product
         fundamental /= np.sqrt(exponent_sum)
         fundamental *= 2 * (np.pi**2.5)
-        auxiliary[0, 0, 0] = fundamental
+        auxiliary[: max_order + 1] = fundamental
 
         # Recursion for Hermite integrals
         hermite_integral_recursion(
@@ -109,7 +115,7 @@ class Coulomb(Operator):
         # Construct operator matrix
         indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
         sum_indices, signs = hermite_operator_matrix_indices(angular_momentum_a, angular_momentum_b)
-        operator = auxiliary[*indices, 0][sum_indices]
+        operator = auxiliary[offsets[*indices][sum_indices]]
         operator = operator.transpose(2, 3, 0, 1)  # p q ab cd -> ab cd p q
         operator *= signs  # cheaper to apply to E, but we want operators self-contained
 

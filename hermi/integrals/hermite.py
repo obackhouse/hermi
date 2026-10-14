@@ -28,6 +28,17 @@ def hermite_indices(max_order: int) -> list[tuple[int, int, int]]:
 
 
 @lru_cache(maxsize=None)
+def hermite_auxiliary_layout(max_order: int) -> tuple[array[int64], int]:
+    """Return packed auxiliary offsets and the number of valid entries."""
+    offsets = np.full((max_order + 1,) * 3, -1, dtype=np.int64)
+    size = 0
+    for t, u, v in hermite_indices(max_order):
+        offsets[t, u, v] = size
+        size += max_order - t - u - v + 1
+    return offsets, size
+
+
+@lru_cache(maxsize=None)
 def hermite_operator_matrix_indices(
     angular_momentum_i: int,
     angular_momentum_j: int,
@@ -148,7 +159,7 @@ def hermite_integral_recursion(
         The updated auxiliary array containing the computed Hermite integrals.
 
     Note:
-        The fundamental value :math:`R_n^{000}` must be precomputed and stored in ``auxiliary[0, 0, 0]``.
+        The fundamental values :math:`R_n^{000}` must be precomputed in the first ``max_order + 1`` entries.
     """
     if np.size(scale) == 1 and np.all(scale == 1.0):
         x_scaled, y_scaled, z_scaled = x, y, z
@@ -156,19 +167,27 @@ def hermite_integral_recursion(
         x_scaled = x * scale
         y_scaled = y * scale
         z_scaled = z * scale
+    offsets, _ = hermite_auxiliary_layout(max_order)
     for t, u, v in hermite_indices(max_order)[1:]:
         order = t + u + v
         valid = max_order - order + 1
+        target = offsets[t, u, v]
         if v:
-            auxiliary[t, u, v, :valid] = auxiliary[t, u, v - 1, 1 : valid + 1] * z_scaled
+            parent = offsets[t, u, v - 1] + 1
+            auxiliary[target : target + valid] = auxiliary[parent : parent + valid] * z_scaled
             if v > 1:
-                auxiliary[t, u, v, :valid] += (v - 1) * scale * auxiliary[t, u, v - 2, 1 : valid + 1]
+                parent = offsets[t, u, v - 2] + 1
+                auxiliary[target : target + valid] += (v - 1) * scale * auxiliary[parent : parent + valid]
         elif u:
-            auxiliary[t, u, v, :valid] = auxiliary[t, u - 1, v, 1 : valid + 1] * y_scaled
+            parent = offsets[t, u - 1, v] + 1
+            auxiliary[target : target + valid] = auxiliary[parent : parent + valid] * y_scaled
             if u > 1:
-                auxiliary[t, u, v, :valid] += (u - 1) * scale * auxiliary[t, u - 2, v, 1 : valid + 1]
+                parent = offsets[t, u - 2, v] + 1
+                auxiliary[target : target + valid] += (u - 1) * scale * auxiliary[parent : parent + valid]
         else:
-            auxiliary[t, u, v, :valid] = auxiliary[t - 1, u, v, 1 : valid + 1] * x_scaled
+            parent = offsets[t - 1, u, v] + 1
+            auxiliary[target : target + valid] = auxiliary[parent : parent + valid] * x_scaled
             if t > 1:
-                auxiliary[t, u, v, :valid] += (t - 1) * scale * auxiliary[t - 2, u, v, 1 : valid + 1]
+                parent = offsets[t - 2, u, v] + 1
+                auxiliary[target : target + valid] += (t - 1) * scale * auxiliary[parent : parent + valid]
     return auxiliary

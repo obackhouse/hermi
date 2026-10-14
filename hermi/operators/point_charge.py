@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from hermi.integrals.boys import boys
-from hermi.integrals.hermite import hermite_indices, hermite_integral_recursion
+from hermi.integrals.hermite import hermite_auxiliary_layout, hermite_indices, hermite_integral_recursion
 from hermi.integrals.symmetry import SymmetryN1S1
 from hermi.operators.operator import Operator, check_views_rank
 from hermi.utils.linear_algebra import outer_powers
@@ -57,24 +57,25 @@ class PointCharge(Operator):
         r"""Compute the (1, 0) point-charge operator matrix in the Hermite basis."""
         shell = views[0]
         max_order = shell.angular_momentum
+        offsets, n_valid = hermite_auxiliary_layout(max_order)
         exponent = shell.exponent
         batched = self.position.ndim == 2
         auxiliary_shape: tuple[int, ...]
         if batched:
             displacement = shell.position[None, ...] - self.position[:, None, :]
-            auxiliary_shape = (max_order + 1,) * 4 + (self.position.shape[0], len(shell))
+            auxiliary_shape = (n_valid, self.position.shape[0], len(shell))
         else:
             displacement = shell.position - self.position
-            auxiliary_shape = (max_order + 1,) * 4 + (len(shell),)
+            auxiliary_shape = (n_valid, len(shell))
         argument = exponent * np.einsum("...x,...x->...", displacement, displacement, optimize=True)
 
-        auxiliary = np.zeros(auxiliary_shape, dtype=np.float64)
+        auxiliary = np.empty(auxiliary_shape, dtype=np.float64)
 
         # Fundamental value
         fundamental = np.moveaxis(outer_powers(-2 * exponent, max_order) * boys(argument, max_order), -1, 0)
         fundamental /= exponent
         fundamental *= 2 * np.pi
-        auxiliary[0, 0, 0] = fundamental
+        auxiliary[: max_order + 1] = fundamental
 
         # Recursion for Hermite integrals
         hermite_integral_recursion(
@@ -87,7 +88,7 @@ class PointCharge(Operator):
 
         # Construct operator matrix
         indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
-        zero_order = np.moveaxis(auxiliary[*indices, 0], 0, -1)
+        zero_order = np.moveaxis(auxiliary[offsets[*indices]], 0, -1)
         operator = np.expand_dims(zero_order, axis=(2, 4) if batched else (1, 3))
 
         return operator
