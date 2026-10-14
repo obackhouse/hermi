@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from hermi.systems.basis import Basis
 
 
-@profile
 def get_cauchy_schwarz_metric(
     basis: Basis,
     *,
