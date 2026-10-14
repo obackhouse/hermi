@@ -9,7 +9,6 @@ import numpy as np
 
 from hermi.integrals.expansion import Expansion
 from hermi.utils.angular import num_cartesian_functions, num_spherical_functions
-from hermi.utils.linear_algebra import add_reduceat
 
 if TYPE_CHECKING:
     from numpy import float64
@@ -27,7 +26,7 @@ def _reduce_primitive(values: array[float64], shell: ShellView, axis: int) -> ar
         len(shell),
         *values.shape[axis + 1 :],
     )
-    expanded = add_reduceat(expanded, shell.basis.contracted_shell_starts(shell.indices), axis=axis)
+    expanded = np.add.reduceat(expanded, shell.basis.contracted_shell_starts(shell.indices), axis=axis)
     expanded = expanded.reshape(
         *values.shape[:axis],
         shell.num_shells,
@@ -59,8 +58,8 @@ def _reduce_primitive_pair(values: array[float64], pair: ShellPairView, axis: in
         )
         expanded = np.sum(expanded, axis=(axis + 1, axis + 3))
     else:
-        expanded = add_reduceat(expanded, starts_i, axis=axis)
-        expanded = add_reduceat(expanded, starts_j, axis=axis + 1)
+        expanded = np.add.reduceat(expanded, starts_i, axis=axis)
+        expanded = np.add.reduceat(expanded, starts_j, axis=axis + 1)
     expanded = expanded.reshape(
         *values.shape[:axis],
         pair.shell_i.num_shells * pair.shell_j.num_shells,
