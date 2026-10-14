@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     type NumbaAddReduceatKernel = Callable[[array[float64], array[int64]], array[float64]]
 
-NUMBA_REDUCEAT_MIN_ELEMENTS = 32_768
+NUMBA_REDUCEAT_MIN_ELEMENTS = 16_384
 
 
 def _add_reduceat_numpy(values: array[float64], indices: array[int64], axis: int = 0) -> array[float64]:
