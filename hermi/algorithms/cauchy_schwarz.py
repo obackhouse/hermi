@@ -89,7 +89,7 @@ def get_cauchy_schwarz_metric(
 
         # Set the block
         block = blocks[key] if index_a <= index_b else blocks[key].T
-        block = block[np.ix_(local_a, local_b)]
+        block = block[np.ix_(local_a, local_b)]  # type: ignore[arg-type]
         symmetry.set_value(matrix, (output_a, output_b), block)
 
     # Reorder the matrix back to the original basis order
