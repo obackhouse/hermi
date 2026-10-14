@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 10 343 103" role="img" aria-labelledby="title desc">
   <title id="title">Hermi banner logo for dark backgrounds</title>
   <desc id="desc">The original Hermi horizontal logo recolored for dark backgrounds, with equal clear space around it.</desc>
-  <g fill="none" stroke="#84989a" stroke-width="2">
-    <path d="M25 35H103M25 61H103M25 87H103M25 35V87M51 35V87M77 35V87M103 35V87"/>
+  <g fill="none" stroke="#84989a" stroke-width="2" stroke-linejoin="round">
+    <path d="M25 35H103V87H25ZM51 34.5V87.5M77 34.5V87.5M24.5 61H103.5"/>
   </g>
   <path d="M51 61H77" stroke="#45c2aa" stroke-width="4" stroke-linecap="round"/>
   <circle cx="51" cy="61" r="8" fill="#f2f7f7" stroke="#31494c" stroke-width="3"/>
