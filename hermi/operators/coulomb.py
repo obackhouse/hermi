@@ -113,7 +113,7 @@ class Coulomb(Operator):
         operator = operator.transpose(2, 3, 0, 1)  # p q ab cd -> ab cd p q
         operator *= signs  # cheaper to apply to E, but we want operators self-contained
 
-        return operator
+        return operator  # type: ignore[no-any-return]
 
     def _get_operator_matrix_11(self, views: tuple[ShellView, ShellView]) -> OperatorMatrix:
         r"""Compute the (1, 1) Coulomb operator matrix in the Hermite basis."""
