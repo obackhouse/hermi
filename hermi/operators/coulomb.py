@@ -25,6 +25,9 @@ from hermi.utils.misc import unreachable
 if TYPE_CHECKING:
     from typing import Any
 
+    from numpy import float64
+
+    from hermi._typing import array
     from hermi.integrals.symmetry import Symmetry
     from hermi.operators.operator import OperatorMatrix, View
     from hermi.systems.basis import ShellPairView, ShellView
@@ -70,11 +73,11 @@ class Coulomb(Operator):
 
     def _get_operator_matrix(
         self,
-        exponent_a: np.ndarray,
-        position_a: np.ndarray,
+        exponent_a: array[float64],
+        position_a: array[float64],
         angular_momentum_a: int,
-        exponent_b: np.ndarray,
-        position_b: np.ndarray,
+        exponent_b: array[float64],
+        position_b: array[float64],
         angular_momentum_b: int,
     ) -> OperatorMatrix:
         """Compute the Coulomb Hermite matrix for two Gaussian distributions."""
@@ -106,11 +109,11 @@ class Coulomb(Operator):
         # Construct operator matrix
         indices = np.asarray(hermite_indices(max_order), dtype=np.int64).T
         sum_indices, signs = hermite_operator_matrix_indices(angular_momentum_a, angular_momentum_b)
-        zero_order = np.moveaxis(auxiliary[*indices, 0], 0, -1)
-        operator = np.take(zero_order, sum_indices, axis=-1)
+        operator = auxiliary[*indices, 0][sum_indices]
+        operator = operator.transpose(2, 3, 0, 1)  # p q ab cd -> ab cd p q
         operator *= signs  # cheaper to apply to E, but we want operators self-contained
 
-        return operator
+        return operator  # type: ignore[no-any-return]
 
     def _get_operator_matrix_11(self, views: tuple[ShellView, ShellView]) -> OperatorMatrix:
         r"""Compute the (1, 1) Coulomb operator matrix in the Hermite basis."""
