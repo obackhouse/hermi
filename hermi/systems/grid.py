@@ -313,6 +313,10 @@ class MolecularGrid(DefaultHash):
 
         Returns:
             The Becke-partitioned molecular grid.
+
+        References:
+            A. D. Becke, J. Chem. Phys. 88, 2547–2553 (1988).
+            https://doi.org/10.1063/1.454033
         """
         radius, radial_weights = _radial_grid(radial_order, radial_scale)
         radial_rules = [(radius, radial_weights)] * molecule.positions.shape[0]
@@ -340,6 +344,12 @@ class MolecularGrid(DefaultHash):
 
         Returns:
             The Handy-style molecular grid.
+
+        References:
+            C. W. Murray, N. C. Handy, and G. J. Laming, Mol. Phys. 78, 997–1014 (1993).
+            https://doi.org/10.1080/00268979300100651
+            S. I. L. Kokkila-Schumacher et al., J. Chem. Theory Comput. 11, 3042–3052 (2015).
+            https://doi.org/10.1021/acs.jctc.5b00272
         """
         rules = []
         for element in molecule.elements:
@@ -373,6 +383,10 @@ class MolecularGrid(DefaultHash):
 
         Returns:
             The radial-DVR molecular grid.
+
+        References:
+            R. M. Parrish, E. G. Hohenstein, T. J. Martínez, and C. D. Sherrill,
+            J. Chem. Phys. 138, 194107 (2013). https://doi.org/10.1063/1.4802773
         """
         rules = [_radial_dvr(basis, position, eigenvalue_cutoff) for position in molecule.positions]
         points, weights = _assemble_atom_centred_grid(molecule, rules, angular_order, becke_iterations)
@@ -405,6 +419,10 @@ class MolecularGrid(DefaultHash):
 
         Returns:
             The finite-basis DVR grid with raw inverse-square weights.
+
+        References:
+            R. M. Parrish, E. G. Hohenstein, T. J. Martínez, and C. D. Sherrill,
+            J. Chem. Phys. 138, 194107 (2013). https://doi.org/10.1063/1.4802773
         """
         # Orthogonalize the basis in the parent-grid overlap metric
         values = basis.evaluate(parent_grid.points, spherical=spherical)

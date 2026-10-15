@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.linalg.lapack import dpstrf
@@ -76,102 +78,6 @@ def _grid_pivots(
     return (pivots[:rank] - 1).astype(np.int64)
 
 
-def _select_grid_points(
-    values: array[float64],
-    order: array[np.int64],
-    *,
-    block_size: int,
-    cholesky_tolerance: float,
-) -> array[np.int64]:
-    """Return indices of representative points in an iteratively pruned grid."""
-    selected = order
-
-    while True:
-        pivots = [
-            _grid_pivots(
-                values[selected[block]],
-                tolerance=cholesky_tolerance,
-            )
-            + block.start
-            for block in iter_slices(0, selected.size, block_size)
-        ]
-        indices = np.sort(np.concatenate(pivots))
-        if indices.size == selected.size:
-            break
-        selected = selected[indices]
-
-    return selected
-
-
-def _select_grid_points_global(
-    values: array[float64],
-    order: array[np.int64],
-    *,
-    cholesky_tolerance: float,
-) -> array[np.int64]:
-    """Select grid points with global matrix-free pivoted Cholesky."""
-    ordered_values = np.ascontiguousarray(values[order])
-    num_points = ordered_values.shape[0]
-    residual = np.einsum("ij,ij->i", ordered_values, ordered_values) ** 2
-    capacity = min(num_points, 64)
-    factor = np.empty((num_points, capacity), dtype=np.float64)
-    pivots = np.empty(num_points, dtype=np.int64)
-    rank = 0
-
-    while rank < num_points:
-        pivot = int(np.argmax(residual))
-        pivot_residual = residual[pivot]
-        if pivot_residual <= cholesky_tolerance:
-            break
-
-        column = (ordered_values @ ordered_values[pivot]) ** 2
-        if rank:
-            column -= factor[:, :rank] @ factor[pivot, :rank]
-        new_factor = column / np.sqrt(pivot_residual)
-
-        if rank == capacity:
-            capacity = min(num_points, 2 * capacity)
-            expanded_factor = np.empty((num_points, capacity), dtype=np.float64)
-            expanded_factor[:, :rank] = factor[:, :rank]
-            factor = expanded_factor
-
-        factor[:, rank] = new_factor
-        residual -= new_factor**2
-        np.maximum(residual, 0.0, out=residual)
-        residual[pivot] = 0.0
-        pivots[rank] = pivot
-        rank += 1
-
-    return order[np.sort(pivots[:rank])]
-
-
-def _select_grid_points_hybrid(
-    values: array[float64],
-    order: array[np.int64],
-    *,
-    block_size: int,
-    cholesky_tolerance: float,
-    candidate_oversampling: float,
-) -> array[np.int64]:
-    """Locally prune the grid, then globally prune the candidate points."""
-    if not np.isfinite(candidate_oversampling) or candidate_oversampling < 1.0:
-        raise ValueError("candidate_oversampling must be at least 1.0")
-
-    candidate_tolerance = cholesky_tolerance / candidate_oversampling
-    candidates = [
-        _grid_pivots(values[order[block]], tolerance=candidate_tolerance) + block.start
-        for block in iter_slices(0, order.size, block_size)
-    ]
-    candidate_positions = np.sort(np.concatenate(candidates))
-    candidate_indices = order[candidate_positions]
-    candidate_pivots = _select_grid_points_global(
-        values[candidate_indices],
-        np.arange(candidate_indices.size, dtype=np.int64),
-        cholesky_tolerance=cholesky_tolerance,
-    )
-    return candidate_indices[candidate_pivots]
-
-
 def _grid_collocation_values(
     ao_basis: Basis,
     grid: MolecularGrid,
@@ -187,47 +93,232 @@ def _grid_collocation_values(
         ao_values = ao_basis.evaluate(grid.points[block], spherical=spherical)
         weights = grid.weights[block, None]
         dense_values[block] = ao_values * np.sqrt(weights)
-        # Pair features carry one square root of the quadrature weight. Since
-        # each pair feature is a product of two AO rows, its AO rows need w^1/4.
         selection_values[block] = ao_values * np.sqrt(np.sqrt(weights))
     return dense_values, selection_values
 
 
-def _prune_grid_indices(
-    selection_values: array[float64],
-    points: array[float64],
-    *,
-    grid_selection: Literal["block", "global", "hybrid"],
-    block_size: int,
-    selection_block_size: int,
-    candidate_oversampling: float,
-    hilbert_bits: int,
-    cholesky_tolerance: float,
-) -> array[np.int64]:
-    """Select THC grid indices from precomputed AO features."""
-    order = _hilbert_argsort(points, hilbert_bits)
-    if grid_selection == "block":
-        return _select_grid_points(
-            selection_values,
-            order,
-            block_size=selection_block_size,
-            cholesky_tolerance=cholesky_tolerance,
-        )
-    if grid_selection == "global":
-        return _select_grid_points_global(
-            selection_values,
-            order,
-            cholesky_tolerance=cholesky_tolerance,
-        )
-    if grid_selection == "hybrid":
-        return _select_grid_points_hybrid(
-            selection_values,
-            order,
-            block_size=selection_block_size,
-            cholesky_tolerance=cholesky_tolerance,
-            candidate_oversampling=candidate_oversampling,
-        )
-    raise ValueError(f"grid_selection must be 'block', 'global', or 'hybrid', got {grid_selection!r}")
+@dataclass
+class GridPruner(ABC):
+    """Base class that prepares a grid and delegates selection to a subclass."""
+
+    @abstractmethod
+    def select_indices(self, selection_values: array[float64], points: array[float64]) -> array[np.int64]:
+        """Return the indices selected by this pruning strategy."""
+        pass
+
+    def __call__(
+        self,
+        grid: MolecularGrid,
+        *,
+        ao_basis: Basis,
+        spherical: bool = False,
+        ao_values: array[float64] | None = None,
+        block_size: int = BLOCK_SIZE,
+    ) -> MolecularGrid:
+        """Evaluate selection features and return the reduced grid."""
+        if ao_values is None:
+            ao_values = self._selection_values(
+                grid,
+                ao_basis,
+                spherical=spherical,
+                block_size=block_size,
+            )
+        return self._subset(grid, self.select_indices(ao_values, grid.points))
+
+    def _selection_values(
+        self,
+        grid: MolecularGrid,
+        ao_basis: Basis,
+        *,
+        spherical: bool,
+        block_size: int,
+    ) -> array[float64]:
+        """Evaluate the normalized AO values."""
+        num_aos = ao_basis.num_contracted_spherical_aos if spherical else ao_basis.num_contracted_cartesian_aos
+        values = np.empty((len(grid), num_aos), dtype=np.float64)
+        for block in iter_slices(0, len(grid), block_size):
+            ao_values = ao_basis.evaluate(grid.points[block], spherical=spherical)
+            values[block] = ao_values * np.sqrt(np.sqrt(grid.weights[block, None]))
+        return values
+
+    @staticmethod
+    def _subset(grid: MolecularGrid, indices: array[np.int64]) -> MolecularGrid:
+        return MolecularGrid(points=grid.points[indices], weights=grid.weights[indices])
+
+
+@dataclass
+class BlockTensorDecomposition(GridPruner):
+    """Prune each spatial tile independently until the grid stops shrinking.
+
+    The implementation follows the Hilbert-sorted block pivoted-Cholesky grid
+    selection in Zhang et al. (2025).
+
+    References:
+        Y. Zhang, X. Xiong, W. Wu, and P. Su, J. Chem. Phys. 163, 174109 (2025).
+        https://doi.org/10.1063/5.0289370
+    """
+
+    block_size: int = BLOCK_SIZE
+    cholesky_tolerance: float = 1e-10
+    hilbert_bits: int = HILBERT_BITS
+
+    def select_indices(self, values: array[float64], points: array[float64]) -> array[np.int64]:
+        selected = _hilbert_argsort(points, self.hilbert_bits)
+
+        while True:
+            block_pivots = [
+                _grid_pivots(values[selected[block]], tolerance=self.cholesky_tolerance) + block.start
+                for block in iter_slices(0, selected.size, self.block_size)
+            ]
+            indices = np.sort(np.concatenate(block_pivots))
+            if indices.size == selected.size:
+                break
+            selected = selected[indices]
+
+        return selected
+
+
+@dataclass
+class GlobalCholesky(GridPruner):
+    """Prune the full grid with matrix-free pivoted Cholesky.
+
+    The pivoted-Cholesky grid selection follows the LS-THC grid optimization
+    approach of Matthews (2020).
+
+    References:
+        D. A. Matthews, J. Chem. Theory Comput. 16, 1382–1385 (2020).
+        https://doi.org/10.1021/acs.jctc.9b01205
+    """
+
+    cholesky_tolerance: float = 1e-10
+    hilbert_bits: int = HILBERT_BITS
+
+    def select_indices(self, values: array[float64], points: array[float64]) -> array[np.int64]:
+        order = _hilbert_argsort(points, self.hilbert_bits)
+        ordered_values = np.ascontiguousarray(values[order])
+        num_points = ordered_values.shape[0]
+        residual = np.einsum("ij,ij->i", ordered_values, ordered_values) ** 2
+        capacity = min(num_points, 64)
+        factor = np.empty((num_points, capacity), dtype=np.float64)
+        pivots = np.empty(num_points, dtype=np.int64)
+        rank = 0
+
+        while rank < num_points:
+            pivot = int(np.argmax(residual))
+            pivot_residual = residual[pivot]
+            if pivot_residual <= self.cholesky_tolerance:
+                break
+
+            column = (ordered_values @ ordered_values[pivot]) ** 2
+            if rank:
+                column -= factor[:, :rank] @ factor[pivot, :rank]
+            new_factor = column / np.sqrt(pivot_residual)
+
+            if rank == capacity:
+                capacity = min(num_points, 2 * capacity)
+                expanded_factor = np.empty((num_points, capacity), dtype=np.float64)
+                expanded_factor[:, :rank] = factor[:, :rank]
+                factor = expanded_factor
+
+            factor[:, rank] = new_factor
+            residual -= new_factor**2
+            np.maximum(residual, 0.0, out=residual)
+            residual[pivot] = 0.0
+            pivots[rank] = pivot
+            rank += 1
+
+        return order[np.sort(pivots[:rank])]
+
+
+@dataclass
+class RandomPhaseCholesky(GridPruner):
+    """Prune with accelerated randomly pivoted Cholesky.
+
+    References:
+        E. N. Epperly, J. A. Tropp, and R. J. Webber, SIAM J. Matrix Anal. Appl.
+        46, 2527–2557 (2025). https://doi.org/10.1137/24M1699048
+    """
+
+    block_size: int = 16
+    random_seed: int = 0
+    cholesky_tolerance: float = 1e-10
+    hilbert_bits: int = HILBERT_BITS
+
+    def select_indices(self, values: array[float64], points: array[float64]) -> array[np.int64]:
+        if self.block_size <= 0:
+            raise ValueError("block_size must be positive")
+        order = _hilbert_argsort(points, self.hilbert_bits)
+        ordered_values = np.ascontiguousarray(values[order])
+        num_points = ordered_values.shape[0]
+        residual = np.einsum("ij,ij->i", ordered_values, ordered_values) ** 2
+        capacity = min(num_points, 64)
+        factor = np.empty((num_points, capacity), dtype=np.float64)
+        pivots = np.empty(num_points, dtype=np.int64)
+        rank = 0
+        rng = np.random.default_rng(self.random_seed)
+
+        while rank < num_points and float(np.max(residual)) > self.cholesky_tolerance:
+            proposal_diagonal = residual.copy()
+            trace = float(proposal_diagonal.sum())
+            if trace <= 0.0:
+                break
+            proposals = rng.choice(
+                num_points,
+                size=self.block_size,
+                replace=True,
+                p=proposal_diagonal / trace,
+            )
+
+            block_residual = (ordered_values @ ordered_values[proposals].T) ** 2
+            if rank:
+                block_residual -= factor[:, :rank] @ factor[proposals, :rank].T
+
+            for column_index, pivot in enumerate(proposals):
+                if rank == num_points or float(np.max(residual)) <= self.cholesky_tolerance:
+                    break
+
+                pivot_residual = float(residual[pivot])
+                envelope = float(proposal_diagonal[pivot])
+                if pivot_residual <= 0.0 or envelope <= 0.0:
+                    continue
+                acceptance = min(pivot_residual / envelope, 1.0)
+                if rng.random() >= acceptance:
+                    continue
+
+                column = block_residual[:, column_index] / np.sqrt(pivot_residual)
+                if rank == capacity:
+                    capacity = min(num_points, 2 * capacity)
+                    expanded_factor = np.empty((num_points, capacity), dtype=np.float64)
+                    expanded_factor[:, :rank] = factor[:, :rank]
+                    factor = expanded_factor
+
+                factor[:, rank] = column
+                residual -= column**2
+                np.maximum(residual, 0.0, out=residual)
+                residual[pivot] = 0.0
+                pivots[rank] = pivot
+                rank += 1
+                block_residual -= np.outer(column, column[proposals])
+
+        return order[np.sort(pivots[:rank])]
+
+
+@dataclass
+class HybridGridPruner(GridPruner):
+    """Prune candidates with one strategy, then remove redundancy globally.
+
+    ``candidate_pruner`` first reduces the input grid. ``global_pruner`` then applies
+    pivoted Cholesky to that candidate set, so the final stage can remove redundant
+    candidates but cannot restore points discarded by the first stage.
+    """
+
+    candidate_pruner: GridPruner = field(default_factory=lambda: BlockTensorDecomposition(cholesky_tolerance=5e-11))
+    global_pruner: GlobalCholesky = field(default_factory=GlobalCholesky)
+
+    def select_indices(self, selection_values: array[float64], points: array[float64]) -> array[np.int64]:
+        candidates = self.candidate_pruner.select_indices(selection_values, points)
+        cleanup = self.global_pruner.select_indices(selection_values[candidates], points[candidates])
+        return candidates[cleanup]
 
 
 def _fit_coulomb_kernel(
@@ -282,16 +373,12 @@ def tensor_hypercontraction(
     *,
     fit_grid: MolecularGrid | None = None,
     spherical: bool = False,
-    grid_selection: Literal["block", "global", "hybrid"] = "block",
+    grid_pruner: GridPruner | None = None,
     block_size: int = BLOCK_SIZE,
-    selection_block_size: int | None = None,
-    candidate_oversampling: float = 2.0,
-    hilbert_bits: int = HILBERT_BITS,
-    cholesky_tolerance: float = 1e-10,
     metric_tolerance: float = 1e-12,
     regularization: float = 1e-14,
 ) -> tuple[array[float64], array[float64]]:
-    r"""Construct a THC factorisation using the block tensor decomposition method.
+    r"""Construct a THC factorisation.
 
     Args:
         ao_basis: Basis used for the collocation matrix.
@@ -299,12 +386,8 @@ def tensor_hypercontraction(
         grid: Candidate grid used for point selection and the THC collocation matrix.
         fit_grid: Integration grid used to fit the Coulomb kernel. Defaults to ``grid``.
         spherical: Use real spherical functions instead of Cartesian functions.
-        grid_selection: Use blockwise, global, or hybrid pivoted Cholesky for grid pruning.
+        grid_pruner: Strategy instance used to prune the candidate grid. Defaults to block pruning.
         block_size: Batch size used to evaluate grid points and assemble the fit.
-        selection_block_size: Tile size for grid selection; defaults to ``block_size``.
-        candidate_oversampling: Tighten local pruning by this factor before global cleanup.
-        hilbert_bits: Number of bits used to sort grid points along the Hilbert curve.
-        cholesky_tolerance: Absolute pivoted Cholesky cutoff for grid selection.
         metric_tolerance: Relative eigenvalue cutoff for the auxiliary Coulomb metric.
         regularization: Diagonal shift for the contracted Coulomb fit (default ``1e-14``).
 
@@ -312,22 +395,20 @@ def tensor_hypercontraction(
         The collocation matrix and Coulomb kernel matrix for the tensor hypercontraction factorisation.
     """
     fit_grid = grid if fit_grid is None else fit_grid
-    selection_block_size = block_size if selection_block_size is None else selection_block_size
+    if grid_pruner is None:
+        grid_pruner = BlockTensorDecomposition(block_size=block_size)
     dense_values, selection_values = _grid_collocation_values(
         ao_basis, grid, spherical=spherical, block_size=block_size
     )
-    selected = _prune_grid_indices(
-        selection_values,
-        grid.points,
-        grid_selection=grid_selection,
+    pruned_grid = grid_pruner(
+        grid,
+        ao_basis=ao_basis,
+        spherical=spherical,
+        ao_values=selection_values,
         block_size=block_size,
-        selection_block_size=selection_block_size,
-        candidate_oversampling=candidate_oversampling,
-        hilbert_bits=hilbert_bits,
-        cholesky_tolerance=cholesky_tolerance,
     )
-    sparse_points = grid.points[selected]
-    collocation = dense_values[selected]
+    sparse_points = pruned_grid.points
+    collocation = ao_basis.evaluate(sparse_points, spherical=spherical) * np.sqrt(pruned_grid.weights[:, None])
     kernel = _fit_coulomb_kernel(
         ao_basis,
         aux_basis,
