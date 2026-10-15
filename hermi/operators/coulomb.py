@@ -71,7 +71,6 @@ class Coulomb(Operator):
             SymmetryN4S8,
         )
 
-    @profile
     def _get_operator_matrix(
         self,
         exponent_a: array[float64],
