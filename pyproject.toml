@@ -22,9 +22,7 @@ dev = [
     "scipy-stubs>=1.0.0",
     "pyscf>=2.0.0",
     "typing-extensions>=4.9.0",
-]
-research = [
-    "rich>=13.9.0",
+    "rich>=14.0.0",
 ]
 
 [tool.setuptools.packages.find]

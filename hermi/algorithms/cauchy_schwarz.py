@@ -165,4 +165,4 @@ def collect_coulomb_22(
             block = coulomb.contract((pair_ab, pair_cd))
             symmetry.set_value(matrix, (*pair_ab.cartesian_ao_slices, *pair_cd.cartesian_ao_slices), block)
 
-    return matrix[np.ix_(restore, restore, restore, restore)]
+    return matrix[np.ix_(restore, restore, restore, restore)]  # type: ignore[arg-type]

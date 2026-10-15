@@ -52,7 +52,7 @@ def _becke_partition_weights(
     log_weights = log_partition[atom_index] - scipy.special.logsumexp(log_partition, axis=0)
     weights = np.exp(log_weights)
 
-    return weights
+    return weights  # type: ignore[no-any-return]
 
 
 def _radial_overlap(
