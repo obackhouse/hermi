@@ -2,28 +2,26 @@
 
 from hermi.algorithms.tensor_hypercontraction import (
     BlockTensorDecomposition,
-    GlobalCholesky,
+    GlobalDecomposition,
     GridSorter,
     GridPruner,
     HilbertSort,
     HybridGridPruner,
     InputOrder,
     MortonSort,
-    RandomPhaseCholesky,
     RecursiveSpatialBisection,
     tensor_hypercontraction,
 )
 
 __all__ = [
     "BlockTensorDecomposition",
-    "GlobalCholesky",
+    "GlobalDecomposition",
     "GridSorter",
     "GridPruner",
     "HilbertSort",
     "HybridGridPruner",
     "InputOrder",
     "MortonSort",
-    "RandomPhaseCholesky",
     "RecursiveSpatialBisection",
     "tensor_hypercontraction",
 ]

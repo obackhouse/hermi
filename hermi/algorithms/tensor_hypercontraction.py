@@ -4,14 +4,19 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from functools import partial
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
-from scipy.linalg.lapack import dpstrf
+from scipy.sparse.linalg import LinearOperator
 
 from hermi.operators.coulomb import Coulomb
 from hermi.operators.point_charge import PointCharge
 from hermi.systems.grid import MolecularGrid
+from hermi.utils.linear_algebra import (
+    greedy_pivoted_cholesky_pivots,
+    pivoted_cholesky_pivots,
+)
 from hermi.utils.slices import iter_slices
 
 if TYPE_CHECKING:
@@ -220,7 +225,10 @@ class BlockTensorDecomposition(GridPruner):
 
     Points are sorted before being split into blocks. Hilbert ordering is the default;
     ``sorter`` can provide another ordering. Each block uses LAPACK's complete
-    pivoted Cholesky with ``cholesky_tolerance`` as its maximum residual-diagonal cutoff.
+    pivoted Cholesky by default, with ``cholesky_tolerance`` as its maximum
+    residual-diagonal cutoff. ``pivot_function`` can select another pivot routine that
+    accepts the block's pair-overlap operator and the tolerance. Additional arguments
+    for that routine can be passed with ``pivot_function_kwargs``.
 
     References:
         Y. Zhang, X. Xiong, W. Wu, and P. Su, J. Chem. Phys. 163, 174109 (2025).
@@ -230,6 +238,8 @@ class BlockTensorDecomposition(GridPruner):
     block_size: int = 2048
     cholesky_tolerance: float = 1e-10
     sorter: GridSorter = field(default_factory=HilbertSort)
+    pivot_function: Callable[..., array[np.int64]] = partial(pivoted_cholesky_pivots)
+    pivot_function_kwargs: dict[str, object] = field(default_factory=dict)
 
     def select_indices(self, values: array[float64], points: array[float64]) -> array[np.int64]:
         """Return the indices selected by this pruning strategy."""
@@ -239,10 +249,13 @@ class BlockTensorDecomposition(GridPruner):
             block_pivots = []
             for block in iter_slices(0, selected.size, self.block_size):
                 block_values = values[selected[block]]
-                overlap = block_values @ block_values.T
-                pair_overlap = np.ascontiguousarray(overlap**2)
-                _, pivots, rank, _ = dpstrf(pair_overlap, tol=self.cholesky_tolerance)
-                block_pivots.append((pivots[:rank] - 1).astype(np.int64) + block.start)
+                pair_overlap = _GridPairOverlapOperator(block_values)
+                pivots = self.pivot_function(
+                    pair_overlap,
+                    tolerance=self.cholesky_tolerance,
+                    **self.pivot_function_kwargs,
+                )
+                block_pivots.append(pivots + block.start)
             indices = np.sort(np.concatenate(block_pivots))
             if indices.size == selected.size:
                 break
@@ -251,13 +264,41 @@ class BlockTensorDecomposition(GridPruner):
         return selected
 
 
+class _GridPairOverlapOperator(LinearOperator):
+    """Matrix-free AO-pair Gram operator with efficient column access."""
+
+    def __init__(self, values: array[float64]) -> None:
+        self.values = values
+        norms = np.einsum("ij,ij->i", values, values)
+        self.diagonal = norms**2
+        super().__init__(dtype=np.dtype(np.float64), shape=(len(values), len(values)))  # type: ignore[call-arg]
+
+    def _matvec(self, vector: array[float64]) -> array[float64]:
+        weighted_pair_metric = self.values.T @ (self.values * vector[:, None])
+        result = np.einsum("pi,ij,pj->p", self.values, weighted_pair_metric, self.values, optimize=True)
+        return result  # type: ignore[no-any-return]
+
+    def column(self, index: int) -> array[float64]:
+        overlap = self.values @ self.values[index]
+        return overlap**2  # type: ignore[no-any-return]
+
+    def columns(self, indices: array[np.int64]) -> array[float64]:
+        overlap = self.values @ self.values[indices].T
+        return overlap**2
+
+    def dense(self) -> array[float64]:
+        overlap = self.values @ self.values.T
+        return np.ascontiguousarray(overlap**2)
+
+
 @dataclass
-class GlobalCholesky(GridPruner):
-    """Prune the full grid with matrix-free pivoted Cholesky.
+class GlobalDecomposition(GridPruner):
+    """Prune the full grid with a configurable pivoted-Cholesky routine.
 
     The sorter sets the internal point order; Hilbert ordering is the default. It can
     affect locality and tie-breaking, but does not change the global residual criterion.
-    The pivoted-Cholesky grid selection follows Matthews (2020).
+    The default matrix-free greedy pivot selection follows Matthews (2020). Set
+    ``pivot_function`` and ``pivot_function_kwargs`` to use another pivot routine.
 
     References:
         D. A. Matthews, J. Chem. Theory Comput. 16, 1382–1385 (2020).
@@ -266,120 +307,20 @@ class GlobalCholesky(GridPruner):
 
     cholesky_tolerance: float = 1e-10
     sorter: GridSorter = field(default_factory=HilbertSort)
+    pivot_function: Callable[..., array[np.int64]] = partial(greedy_pivoted_cholesky_pivots)
+    pivot_function_kwargs: dict[str, object] = field(default_factory=dict)
 
     def select_indices(self, values: array[float64], points: array[float64]) -> array[np.int64]:
         """Return the indices selected by this pruning strategy."""
         order = self.sorter.sort_indices(points)
         ordered_values = np.ascontiguousarray(values[order])
-        num_points = ordered_values.shape[0]
-        residual = np.einsum("ij,ij->i", ordered_values, ordered_values) ** 2
-        capacity = min(num_points, 64)
-        factor = np.empty((num_points, capacity), dtype=np.float64)
-        pivots = np.empty(num_points, dtype=np.int64)
-        rank = 0
-
-        while rank < num_points:
-            pivot = int(np.argmax(residual))
-            pivot_residual = residual[pivot]
-            if pivot_residual <= self.cholesky_tolerance:
-                break
-
-            column = (ordered_values @ ordered_values[pivot]) ** 2
-            if rank:
-                column -= factor[:, :rank] @ factor[pivot, :rank]
-            new_factor = column / np.sqrt(pivot_residual)
-
-            if rank == capacity:
-                capacity = min(num_points, 2 * capacity)
-                expanded_factor = np.empty((num_points, capacity), dtype=np.float64)
-                expanded_factor[:, :rank] = factor[:, :rank]
-                factor = expanded_factor
-
-            factor[:, rank] = new_factor
-            residual -= new_factor**2
-            np.maximum(residual, 0.0, out=residual)
-            residual[pivot] = 0.0
-            pivots[rank] = pivot
-            rank += 1
-
-        return order[np.sort(pivots[:rank])]
-
-
-@dataclass
-class RandomPhaseCholesky(GridPruner):
-    """Prune with accelerated randomly pivoted Cholesky.
-
-    The sorter sets the internal point order and the mapping from a fixed random seed
-    to physical points. Hilbert ordering is the default.
-
-    References:
-        E. N. Epperly, J. A. Tropp, and R. J. Webber, SIAM J. Matrix Anal. Appl.
-        46, 2527–2557 (2025). https://doi.org/10.1137/24M1699048
-    """
-
-    block_size: int = 16
-    random_seed: int = 0
-    cholesky_tolerance: float = 1e-10
-    sorter: GridSorter = field(default_factory=HilbertSort)
-
-    def select_indices(self, values: array[float64], points: array[float64]) -> array[np.int64]:
-        """Return the indices selected by this pruning strategy."""
-        if self.block_size <= 0:
-            raise ValueError("block_size must be positive")
-        order = self.sorter.sort_indices(points)
-        ordered_values = np.ascontiguousarray(values[order])
-        num_points = ordered_values.shape[0]
-        residual = np.einsum("ij,ij->i", ordered_values, ordered_values) ** 2
-        capacity = min(num_points, 64)
-        factor = np.empty((num_points, capacity), dtype=np.float64)
-        pivots = np.empty(num_points, dtype=np.int64)
-        rank = 0
-        rng = np.random.default_rng(self.random_seed)
-
-        while rank < num_points and float(np.max(residual)) > self.cholesky_tolerance:
-            proposal_diagonal = residual.copy()
-            trace = float(proposal_diagonal.sum())
-            if trace <= 0.0:
-                break
-            proposals = rng.choice(
-                num_points,
-                size=self.block_size,
-                replace=True,
-                p=proposal_diagonal / trace,
-            )
-
-            block_residual = (ordered_values @ ordered_values[proposals].T) ** 2
-            if rank:
-                block_residual -= factor[:, :rank] @ factor[proposals, :rank].T
-
-            for column_index, pivot in enumerate(proposals):
-                if rank == num_points or float(np.max(residual)) <= self.cholesky_tolerance:
-                    break
-
-                pivot_residual = float(residual[pivot])
-                envelope = float(proposal_diagonal[pivot])
-                if pivot_residual <= 0.0 or envelope <= 0.0:
-                    continue
-                acceptance = min(pivot_residual / envelope, 1.0)
-                if rng.random() >= acceptance:
-                    continue
-
-                column = block_residual[:, column_index] / np.sqrt(pivot_residual)
-                if rank == capacity:
-                    capacity = min(num_points, 2 * capacity)
-                    expanded_factor = np.empty((num_points, capacity), dtype=np.float64)
-                    expanded_factor[:, :rank] = factor[:, :rank]
-                    factor = expanded_factor
-
-                factor[:, rank] = column
-                residual -= column**2
-                np.maximum(residual, 0.0, out=residual)
-                residual[pivot] = 0.0
-                pivots[rank] = pivot
-                rank += 1
-                block_residual -= np.outer(column, column[proposals])
-
-        return order[np.sort(pivots[:rank])]
+        pair_overlap = _GridPairOverlapOperator(ordered_values)
+        pivots = self.pivot_function(
+            pair_overlap,
+            tolerance=self.cholesky_tolerance,
+            **self.pivot_function_kwargs,
+        )
+        return order[pivots]
 
 
 @dataclass
@@ -391,8 +332,13 @@ class HybridGridPruner(GridPruner):
     candidates but cannot restore points discarded by the first stage.
     """
 
-    candidate_pruner: GridPruner = field(default_factory=lambda: BlockTensorDecomposition(cholesky_tolerance=5e-11))
-    global_pruner: GlobalCholesky = field(default_factory=GlobalCholesky)
+    candidate_pruner: GridPruner = field(
+        default_factory=lambda: BlockTensorDecomposition(
+            cholesky_tolerance=5e-11,
+            pivot_function=greedy_pivoted_cholesky_pivots,
+        )
+    )
+    global_pruner: GlobalDecomposition = field(default_factory=GlobalDecomposition)
 
     def select_indices(self, selection_values: array[float64], points: array[float64]) -> array[np.int64]:
         """Return the indices selected by this pruning strategy."""
