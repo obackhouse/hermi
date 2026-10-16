@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -12,6 +13,7 @@ import scipy.optimize
 import scipy.special
 
 from hermi.operators.overlap import Overlap
+from hermi.systems._grid_data import BRAGG_RADII_ANGSTROM, LEBEDEV_ORBITS, TREUTLER_XI
 from hermi.utils.misc import DefaultHash
 
 if TYPE_CHECKING:
@@ -28,6 +30,7 @@ def _becke_partition_weights(
     atom_positions: array[float64],
     internuclear_distances: array[float64],
     becke_iterations: int,
+    radius_adjustments: array[float64] | None = None,
 ) -> array[float64]:
     """Return Becke partition weights for one atom's points."""
     num_atoms = atom_positions.shape[0]
@@ -42,6 +45,9 @@ def _becke_partition_weights(
         other_atoms = atom_indices != first
         pair_distances = internuclear_distances[first, other_atoms]
         mu = (distances[:, first, None] - distances[:, other_atoms]) / pair_distances
+        if radius_adjustments is not None:
+            pair_adjustments = radius_adjustments[first, other_atoms]
+            mu += pair_adjustments * (1 - mu**2)
         switching = np.clip(mu, -1, 1)
         for _ in range(becke_iterations):
             switching = 0.5 * switching * (3 - switching**2)
@@ -233,50 +239,123 @@ def _assemble_atom_centred_grid(
     angular_order: int,
     becke_iterations: int,
 ) -> tuple[array[float64], array[float64]]:
-    """Combine radial rules, angular points, and Becke partition weights."""
-    directions, angular_weights = _angular_grid(angular_order)
+    """Combine Treutler-pruned Lebedev grids and radius-adjusted Becke weights."""
+    max_angular_points = _lebedev_point_count(angular_order)
     atom_positions = molecule.positions
     distances = np.linalg.norm(atom_positions[:, None] - atom_positions[None, :], axis=-1)
+    atomic_charges = np.asarray([element.atomic_charge for element in molecule.elements])
+    atomic_radii = np.sqrt(np.asarray(BRAGG_RADII_ANGSTROM)[atomic_charges])
+    radius_ratios = atomic_radii[:, None] / atomic_radii[None, :]
+    radius_adjustments = np.clip(0.25 * (radius_ratios.T - radius_ratios), -0.5, 0.5)
 
     points: list[array[float64]] = []
     weights: list[array[float64]] = []
     for atom_index, (position, (radius, radial_weights)) in enumerate(zip(atom_positions, radial_rules, strict=True)):
-        atom_points = position + np.multiply.outer(radius, directions).reshape((-1, 3))
-        product_weights = np.multiply.outer(radial_weights, angular_weights).ravel()
-        partition = _becke_partition_weights(atom_points, atom_index, atom_positions, distances, becke_iterations)
-        points.append(atom_points)
-        weights.append(product_weights * partition)
+        angular_points_by_radius = _treutler_pruned_angular_points(radius, max_angular_points)
+        for angular_points in np.unique(angular_points_by_radius):
+            radial_indices = np.flatnonzero(angular_points_by_radius == angular_points)
+            directions, angular_weights = _lebedev_grid(int(angular_points))
+            atom_points = position + np.multiply.outer(radius[radial_indices], directions).reshape((-1, 3))
+            product_weights = np.multiply.outer(radial_weights[radial_indices], angular_weights).ravel()
+            partition = _becke_partition_weights(
+                atom_points,
+                atom_index,
+                atom_positions,
+                distances,
+                becke_iterations,
+                radius_adjustments,
+            )
+            points.append(atom_points)
+            weights.append(product_weights * partition)
 
     return np.concatenate(points), np.concatenate(weights)
 
 
-def _radial_grid(order: int, scale: float) -> tuple[array[float64], array[float64]]:
-    """Generate radial Gauss-Legendre points on a rational map to infinity."""
-    nodes, weights = np.polynomial.legendre.leggauss(order)
-    fraction = (nodes + 1) / 2
-    weights /= 2
-    radius = scale * fraction / (1 - fraction)
-    jacobian = scale / (1 - fraction) ** 2
-    weights *= jacobian * radius**2
-    return radius, weights
+def _treutler_radial_grid(order: int, atomic_charge: int, scale: float) -> tuple[array[float64], array[float64]]:
+    """Generate Treutler-Ahlrichs radial nodes and volume weights."""
+    xi = TREUTLER_XI[atomic_charge] if atomic_charge < len(TREUTLER_XI) else 1.0
+    step = np.pi / (order + 1)
+    index = np.arange(1, order + 1, dtype=np.float64)
+    angle = index * step
+    cosine = np.cos(angle)
+    sine = np.sin(angle)
+    log_term = np.log((1 - cosine) / 2)
+    radius = -(xi / np.log(2)) * (1 + cosine) ** 0.6 * log_term
+    radial_weight = (
+        step * sine * (xi / np.log(2)) * (1 + cosine) ** 0.6 * (-0.6 / (1 + cosine) * log_term + 1 / (1 - cosine))
+    )
+    radius = scale * radius[::-1]
+    radial_weight = scale * radial_weight[::-1]
+    return radius, radius**2 * radial_weight
 
 
 def _angular_grid(order: int) -> tuple[array[float64], array[float64]]:
-    """Build a product angular rule with Gauss-Legendre polar points."""
-    nodes, weights = np.polynomial.legendre.leggauss(order)
-    azimuth_count = 2 * order + 1
-    azimuth = 2 * np.pi * np.arange(azimuth_count) / azimuth_count
-    polar_grid, azimuth_grid = np.meshgrid(nodes, azimuth, indexing="ij")
-    directions = np.stack(
-        (
-            np.sqrt(1 - polar_grid**2) * np.cos(azimuth_grid),
-            np.sqrt(1 - polar_grid**2) * np.sin(azimuth_grid),
-            polar_grid,
-        ),
-        axis=-1,
-    ).reshape((-1, 3))
-    weights = np.broadcast_to(weights[:, None] * (2 * np.pi / azimuth_count), polar_grid.shape).ravel()
-    return directions, weights
+    """Return the Lebedev rule matching an angular resolution order."""
+    return _lebedev_grid(_lebedev_point_count(order))
+
+
+def _lebedev_point_count(order: int) -> int:
+    """Map angular resolution to the first adequate nonnegative Lebedev rule."""
+    minimum_points = order * (2 * order + 1)
+    sizes = np.fromiter(LEBEDEV_ORBITS, dtype=np.int64)
+    index = int(np.searchsorted(sizes, minimum_points))
+    for size in sizes[index:]:
+        if all(orbit[3] >= 0 for orbit in LEBEDEV_ORBITS[int(size)]):
+            return int(size)
+    raise ValueError(f"angular order {order} exceeds the largest bundled nonnegative Lebedev rule")
+
+
+@lru_cache(maxsize=32)
+def _lebedev_grid(angular_points: int) -> tuple[array[float64], array[float64]]:
+    """Return Lebedev directions and weights normalized over the sphere."""
+    try:
+        orbits = LEBEDEV_ORBITS[angular_points]
+    except KeyError as error:
+        raise ValueError(f"unsupported Lebedev point count: {angular_points}") from error
+    points: list[tuple[float, float, float]] = []
+    weights: list[float] = []
+    seen: set[tuple[float, float, float]] = set()
+    for code, a, b, weight in orbits:
+        if code == 0:
+            orbit = ((1.0, 0.0, 0.0),)
+        elif code == 1:
+            value = np.sqrt(0.5)
+            orbit = ((0.0, value, value),)
+        elif code == 2:
+            value = np.sqrt(1.0 / 3.0)
+            orbit = ((value, value, value),)
+        elif code in (3, 4, 5, 6):
+            if code == 3:
+                orbit = ((a, a, np.sqrt(max(0.0, 1.0 - 2 * a * a))),)
+            elif code == 4:
+                orbit = ((a, np.sqrt(max(0.0, 1.0 - a * a)), 0.0),)
+            elif code == 5:
+                orbit = ((a, b, np.sqrt(max(0.0, 1.0 - a * a - b * b))),)
+            else:
+                orbit = ((a, b, np.sqrt(max(0.0, 1.0 - a * a - b * b))),)
+        else:
+            raise ValueError(f"unknown Lebedev orbit code: {code}")
+
+        for seed in orbit:
+            for permutation in set(itertools.permutations(seed)):
+                for signs in itertools.product((-1.0, 1.0), repeat=3):
+                    point = (permutation[0] * signs[0], permutation[1] * signs[1], permutation[2] * signs[2])
+                    if point not in seen:
+                        seen.add(point)
+                        points.append(point)
+                        weights.append(weight * 4 * np.pi)
+    return np.asarray(points, dtype=np.float64), np.asarray(weights, dtype=np.float64)
+
+
+def _treutler_pruned_angular_points(radial_nodes: array[float64], max_angular_points: int) -> array[np.int64]:
+    """Return the Treutler angular rule size for each radial shell."""
+    if max_angular_points < 50:
+        return np.full(radial_nodes.size, max_angular_points, dtype=np.int64)
+    points = np.empty(radial_nodes.size, dtype=np.int64)
+    points[: radial_nodes.size // 3] = 14
+    points[radial_nodes.size // 3 : radial_nodes.size // 2] = 50
+    points[radial_nodes.size // 2 :] = max_angular_points
+    return points
 
 
 @dataclass(frozen=True, eq=False, slots=True)
@@ -306,9 +385,9 @@ class MolecularGrid(DefaultHash):
 
         Args:
             molecule: Molecule with coordinates.
-            radial_order: Number of radial points per atom.
-            angular_order: Number of polar points.
-            radial_scale: Scale of the radial map.
+            radial_order: Number of Treutler-Ahlrichs radial points per atom.
+            angular_order: Angular resolution; the smallest adequate nonnegative-weight Lebedev rule is selected.
+            radial_scale: Scale applied to the Treutler-Ahlrichs radial nodes.
             becke_iterations: Number of cubic Becke switching steps.
 
         Returns:
@@ -317,9 +396,13 @@ class MolecularGrid(DefaultHash):
         References:
             A. D. Becke, J. Chem. Phys. 88, 2547–2553 (1988).
             https://doi.org/10.1063/1.454033
+            A. Treutler and R. Ahlrichs, J. Chem. Phys. 102, 346 (1995).
+            https://doi.org/10.1063/1.469408
+            V. I. Lebedev and D. N. Laikov, Dokl. Math. 59, 477–481 (1999).
         """
-        radius, radial_weights = _radial_grid(radial_order, radial_scale)
-        radial_rules = [(radius, radial_weights)] * molecule.positions.shape[0]
+        radial_rules = [
+            _treutler_radial_grid(radial_order, element.atomic_charge, radial_scale) for element in molecule.elements
+        ]
         points, weights = _assemble_atom_centred_grid(molecule, radial_rules, angular_order, becke_iterations)
         return cls(points=points, weights=weights)
 
@@ -338,7 +421,7 @@ class MolecularGrid(DefaultHash):
         Args:
             molecule: Molecule to grid, with coordinates.
             radial_nodes_by_element: Mapping from element symbols to increasing radial nodes.
-            angular_order: Number of polar points.
+            angular_order: Angular resolution; the smallest adequate nonnegative-weight Lebedev rule is selected.
             radial_scale: Scale of the radial coordinate map.
             becke_iterations: Number of cubic Becke switching steps.
 
@@ -377,7 +460,7 @@ class MolecularGrid(DefaultHash):
         Args:
             molecule: Molecule to grid, with coordinates.
             basis: Basis used to construct the nodes.
-            angular_order: Number of polar points.
+            angular_order: Angular resolution; the smallest adequate nonnegative-weight Lebedev rule is selected.
             becke_iterations: Number of cubic Becke switching steps.
             eigenvalue_cutoff: Relative cutoff for radial overlap eigenvalues.
 

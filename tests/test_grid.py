@@ -10,10 +10,10 @@ from hermi.systems.grid import (
     MolecularGrid,
     _angular_grid,
     _becke_partition_weights,
-    _radial_grid,
     _radial_integrals,
     _radial_overlap,
     _simultaneous_diagonalize,
+    _treutler_radial_grid,
 )
 from hermi.systems.molecule import Molecule
 
@@ -25,8 +25,8 @@ def test_angular_grid_has_unit_directions_and_spherical_weights() -> None:
     assert weights.sum() == pytest.approx(4 * np.pi)
 
 
-def test_radial_grid_maps_to_positive_radii() -> None:
-    radii, weights = _radial_grid(8, 1.2)
+def test_treutler_radial_grid_maps_to_positive_radii() -> None:
+    radii, weights = _treutler_radial_grid(8, 1, 1.2)
 
     assert np.all(radii > 0)
     assert np.all(np.diff(radii) > 0)
@@ -121,12 +121,12 @@ def test_simultaneous_diagonalize_reduces_noncommuting_residual() -> None:
     assert np.linalg.norm(off_diagonal) < np.linalg.norm(initial_off_diagonal)
 
 
-def test_from_becke_builds_expected_product_grid() -> None:
+def test_from_becke_builds_expected_lebedev_grid() -> None:
     molecule = Molecule.from_list(["H", "H"], [[0.0, 0.0, 0.0], [0.0, 0.0, 1.4]], units="bohr")
     radial_order = 4
     angular_order = 3
     grid = MolecularGrid.from_becke(molecule, radial_order=radial_order, angular_order=angular_order)
-    expected_points_per_atom = radial_order * angular_order * (2 * angular_order + 1)
+    expected_points_per_atom = radial_order * _angular_grid(angular_order)[0].shape[0]
 
     assert len(grid) == 2 * expected_points_per_atom
     assert grid.points.shape == (len(grid), 3)
@@ -177,5 +177,5 @@ def test_from_becke_builds_a_single_atom_grid() -> None:
     molecule = Molecule.from_list(["H"], [[0.0, 0.0, 0.0]], units="bohr")
     grid = MolecularGrid.from_becke(molecule, radial_order=4, angular_order=2)
 
-    assert len(grid) == 4 * 2 * 5
+    assert len(grid) == 4 * _angular_grid(2)[0].shape[0]
     assert np.all(grid.weights > 0)
