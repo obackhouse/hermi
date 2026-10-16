@@ -13,6 +13,7 @@ from hermi.systems.grid import (
     _radial_integrals,
     _radial_overlap,
     _simultaneous_diagonalize,
+    _treutler_pruned_angular_points,
     _treutler_radial_grid,
 )
 from hermi.systems.molecule import Molecule
@@ -126,7 +127,11 @@ def test_from_becke_builds_expected_lebedev_grid() -> None:
     radial_order = 4
     angular_order = 3
     grid = MolecularGrid.from_becke(molecule, radial_order=radial_order, angular_order=angular_order)
-    expected_points_per_atom = radial_order * _angular_grid(angular_order)[0].shape[0]
+    radial_nodes, _ = _treutler_radial_grid(radial_order, 1, 1.0)
+    max_angular_points = _angular_grid(angular_order)[0].shape[0]
+    expected_points_per_atom = int(
+        _treutler_pruned_angular_points(radial_nodes, max_angular_points, 1).sum()
+    )
 
     assert len(grid) == 2 * expected_points_per_atom
     assert grid.points.shape == (len(grid), 3)
@@ -175,7 +180,12 @@ def test_nnls_reweight_can_be_chained_after_grid_construction(basis_factory) -> 
 
 def test_from_becke_builds_a_single_atom_grid() -> None:
     molecule = Molecule.from_list(["H"], [[0.0, 0.0, 0.0]], units="bohr")
-    grid = MolecularGrid.from_becke(molecule, radial_order=4, angular_order=2)
+    radial_order = 4
+    angular_order = 2
+    grid = MolecularGrid.from_becke(molecule, radial_order=radial_order, angular_order=angular_order)
+    radial_nodes, _ = _treutler_radial_grid(radial_order, 1, 1.0)
+    max_angular_points = _angular_grid(angular_order)[0].shape[0]
+    expected_points = int(_treutler_pruned_angular_points(radial_nodes, max_angular_points, 1).sum())
 
-    assert len(grid) == 4 * _angular_grid(2)[0].shape[0]
+    assert len(grid) == expected_points
     assert np.all(grid.weights > 0)

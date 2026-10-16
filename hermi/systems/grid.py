@@ -14,6 +14,7 @@ import scipy.special
 
 from hermi.operators.overlap import Overlap
 from hermi.systems._grid_data import BRAGG_RADII_ANGSTROM, LEBEDEV_ORBITS, TREUTLER_XI
+from hermi.systems.molecule import ANGSTROM_TO_BOHR
 from hermi.utils.misc import DefaultHash
 
 if TYPE_CHECKING:
@@ -251,7 +252,11 @@ def _assemble_atom_centred_grid(
     points: list[array[float64]] = []
     weights: list[array[float64]] = []
     for atom_index, (position, (radius, radial_weights)) in enumerate(zip(atom_positions, radial_rules, strict=True)):
-        angular_points_by_radius = _treutler_pruned_angular_points(radius, max_angular_points)
+        angular_points_by_radius = _treutler_pruned_angular_points(
+            radius,
+            max_angular_points,
+            molecule.elements[atom_index].atomic_charge,
+        )
         for angular_points in np.unique(angular_points_by_radius):
             radial_indices = np.flatnonzero(angular_points_by_radius == angular_points)
             directions, angular_weights = _lebedev_grid(int(angular_points))
@@ -347,15 +352,46 @@ def _lebedev_grid(angular_points: int) -> tuple[array[float64], array[float64]]:
     return np.asarray(points, dtype=np.float64), np.asarray(weights, dtype=np.float64)
 
 
-def _treutler_pruned_angular_points(radial_nodes: array[float64], max_angular_points: int) -> array[np.int64]:
-    """Return the Treutler angular rule size for each radial shell."""
-    if max_angular_points < 50:
+def _treutler_pruned_angular_points(
+    radial_nodes: array[float64],
+    max_angular_points: int,
+    atomic_charge: int,
+) -> array[np.int64]:
+    """Return radius-dependent Lebedev rule sizes for Treutler radial shells.
+
+    The radial regions follow SG1-style element-specific cutoffs. Their angular
+    resolutions scale from the 50-point rule with ``max_angular_points``, while
+    retaining fewer points near the nucleus.
+    """
+    if max_angular_points <= 6:
         return np.full(radial_nodes.size, max_angular_points, dtype=np.int64)
-    points = np.empty(radial_nodes.size, dtype=np.int64)
-    points[: radial_nodes.size // 3] = 14
-    points[radial_nodes.size // 3 : radial_nodes.size // 2] = 50
-    points[radial_nodes.size // 2 :] = max_angular_points
-    return points
+
+    if atomic_charge <= 2:
+        radial_cutoffs = np.array([0.25, 0.5, 1.0, 4.5])
+    elif atomic_charge <= 10:
+        radial_cutoffs = np.array([0.1667, 0.5, 0.9, 3.5])
+    else:
+        radial_cutoffs = np.array([0.1, 0.4, 0.8, 2.5])
+
+    atomic_radius = np.sqrt(BRAGG_RADII_ANGSTROM[atomic_charge]) * ANGSTROM_TO_BOHR
+    regions = (radial_nodes[:, None] / atomic_radius > radial_cutoffs).sum(axis=1)
+
+    # At a maximum rule of 50 points, this gives 6, 38, 50, 50, 50 points.
+    # Scale the reduced rules with the requested angular resolution, then map
+    # each target to an available nonnegative-weight Lebedev rule.
+    target_points = np.array([6, 38, 50, 50, 50], dtype=np.float64)
+    target_points *= max_angular_points / 50
+    available = np.array(
+        [
+            size
+            for size, orbits in LEBEDEV_ORBITS.items()
+            if size <= max_angular_points and all(orbit[3] >= 0 for orbit in orbits)
+        ],
+        dtype=np.int64,
+    )
+    available.sort()
+    rule_indices = np.minimum(np.searchsorted(available, target_points, side="left"), available.size - 1)
+    return available[rule_indices][regions]  # type: ignore[no-any-return]
 
 
 @dataclass(frozen=True, eq=False, slots=True)
@@ -386,7 +422,8 @@ class MolecularGrid(DefaultHash):
         Args:
             molecule: Molecule with coordinates.
             radial_order: Number of Treutler-Ahlrichs radial points per atom.
-            angular_order: Angular resolution; the smallest adequate nonnegative-weight Lebedev rule is selected.
+            angular_order: Maximum angular resolution. Radial-region pruning uses smaller Lebedev rules near each
+                nucleus and refines them as this order increases.
             radial_scale: Scale applied to the Treutler-Ahlrichs radial nodes.
             becke_iterations: Number of cubic Becke switching steps.
 
