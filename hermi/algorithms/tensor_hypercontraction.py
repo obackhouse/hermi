@@ -150,18 +150,6 @@ class RecursiveSpatialBisection(GridSorter):
         return np.concatenate(leaves) if leaves else np.empty(0, dtype=np.int64)
 
 
-def _grid_pivots(
-    values: array[float64],
-    *,
-    tolerance: float,
-) -> array[np.int64]:
-    """Select representative grid points using pivoted Cholesky decomposition."""
-    overlap = values @ values.T
-    pair_overlap = np.ascontiguousarray(overlap**2)
-    _, pivots, rank, _ = dpstrf(pair_overlap, tol=tolerance)
-    return (pivots[:rank] - 1).astype(np.int64)
-
-
 def _grid_collocation_values(
     ao_basis: Basis,
     grid: MolecularGrid,
@@ -231,8 +219,8 @@ class BlockTensorDecomposition(GridPruner):
     """Prune each spatial tile independently until the grid stops shrinking.
 
     Points are sorted before being split into blocks. Hilbert ordering is the default;
-    ``sorter`` can provide another ordering. The block pivoted-Cholesky procedure follows
-    Zhang et al. (2025).
+    ``sorter`` can provide another ordering. Each block uses LAPACK's complete
+    pivoted Cholesky with ``cholesky_tolerance`` as its maximum residual-diagonal cutoff.
 
     References:
         Y. Zhang, X. Xiong, W. Wu, and P. Su, J. Chem. Phys. 163, 174109 (2025).
@@ -248,10 +236,13 @@ class BlockTensorDecomposition(GridPruner):
         selected = self.sorter.sort_indices(points)
 
         while True:
-            block_pivots = [
-                _grid_pivots(values[selected[block]], tolerance=self.cholesky_tolerance) + block.start
-                for block in iter_slices(0, selected.size, self.block_size)
-            ]
+            block_pivots = []
+            for block in iter_slices(0, selected.size, self.block_size):
+                block_values = values[selected[block]]
+                overlap = block_values @ block_values.T
+                pair_overlap = np.ascontiguousarray(overlap**2)
+                _, pivots, rank, _ = dpstrf(pair_overlap, tol=self.cholesky_tolerance)
+                block_pivots.append((pivots[:rank] - 1).astype(np.int64) + block.start)
             indices = np.sort(np.concatenate(block_pivots))
             if indices.size == selected.size:
                 break
