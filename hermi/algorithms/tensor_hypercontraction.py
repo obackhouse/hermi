@@ -8,9 +8,10 @@ from functools import partial
 from typing import TYPE_CHECKING, Callable
 
 import numpy as np
-from scipy.linalg import cho_factor, cho_solve
+import scipy.linalg
 from scipy.sparse.linalg import LinearOperator
 
+from hermi.algorithms.density_fitting import PairSpaceProjector
 from hermi.operators.coulomb import Coulomb
 from hermi.operators.point_charge import PointCharge
 from hermi.systems.grid import MolecularGrid
@@ -174,12 +175,88 @@ def _grid_collocation_values(
     return dense_values, selection_values
 
 
+class PairOverlapOperator(LinearOperator):
+    """Matrix-free Gram operator for full or projected AO-pair features.
+
+    With no projector, this is the full AO-pair Gram matrix,
+    ``(values @ other_values.T)**2``. A ``PairSpaceProjector`` restricts the
+    pair features to a sum of factorized orbital-pair projectors without
+    explicitly constructing a pair-space projector or pair feature tensor.
+    """
+
+    def __init__(
+        self,
+        values: array[float64],
+        pair_projector: tuple[PairSpaceProjector, ...] | None = None,
+    ) -> None:
+        self.values = values
+        self.pair_projector = pair_projector
+        self.diagonal = self._diagonal(values)
+        super().__init__(dtype=np.dtype(np.float64), shape=(len(values), len(values)))  # type: ignore[call-arg]
+
+    def _diagonal(self, values: array[float64]) -> array[float64]:
+        if self.pair_projector is None:
+            norms = np.einsum("ij,ij->i", values, values)
+            return norms**2  # type: ignore[no-any-return]
+
+        diagonal = np.zeros(values.shape[0], dtype=np.float64)
+        for channel in self.pair_projector:
+            left = values @ channel.left_coefficients
+            right = values @ channel.right_coefficients
+            diagonal += channel.weight * np.einsum("gi,gi->g", left, left) * np.einsum("gi,gi->g", right, right)
+        return diagonal
+
+    def cross(self, other_values: array[float64]) -> array[float64]:
+        """Return pair-feature overlaps between this and another point set."""
+        if self.pair_projector is None:
+            return (self.values @ other_values.T) ** 2
+
+        result = np.zeros((self.values.shape[0], other_values.shape[0]), dtype=np.float64)
+        for channel in self.pair_projector:
+            left = self.values @ channel.left_coefficients
+            other_left = other_values @ channel.left_coefficients
+            right = self.values @ channel.right_coefficients
+            other_right = other_values @ channel.right_coefficients
+            result += channel.weight * (left @ other_left.T) * (right @ other_right.T)
+        return result
+
+    def subset(self, indices: array[np.int64] | slice) -> PairOverlapOperator:
+        """Return the same pair-space operator restricted to selected rows."""
+        return PairOverlapOperator(self.values[indices], self.pair_projector)
+
+    def _matvec(self, vector: array[float64]) -> array[float64]:
+        if self.pair_projector is None:
+            weighted_pair_metric = self.values.T @ (self.values * vector[:, None])
+            result = np.einsum("pi,ij,pj->p", self.values, weighted_pair_metric, self.values, optimize=True)
+            return result  # type: ignore[no-any-return]
+
+        result = np.zeros(self.values.shape[0], dtype=np.float64)
+        for channel in self.pair_projector:
+            left = self.values @ channel.left_coefficients
+            right = self.values @ channel.right_coefficients
+            weighted_pair_metric = np.einsum("g,gi,ga->ia", vector, left, right, optimize=True)
+            result += channel.weight * np.einsum("gi,ga,ia->g", left, right, weighted_pair_metric, optimize=True)
+        return result
+
+    def column(self, index: int) -> array[float64]:
+        """Return one Gram-matrix column."""
+        return self.cross(self.values[index : index + 1])[:, 0]
+
+    def columns(self, indices: array[np.int64]) -> array[float64]:
+        """Return selected Gram-matrix columns."""
+        return self.cross(self.values[indices])
+
+    def dense(self) -> array[float64]:
+        """Materialize the Gram matrix."""
+        return np.ascontiguousarray(self.cross(self.values))
+
+
 @dataclass
 class GridPruner(ABC):
     """Base class that prepares a grid and delegates selection to a subclass."""
 
     @abstractmethod
-    def select_indices(self, selection_values: array[float64], points: array[float64]) -> array[np.int64]:
+    def select_indices(self, pair_overlap: PairOverlapOperator, points: array[float64]) -> array[np.int64]:
         """Return the indices selected by this pruning strategy."""
         pass
 
@@ -190,6 +267,7 @@ class GridPruner(ABC):
         ao_basis: Basis,
         spherical: bool = False,
         ao_values: array[float64] | None = None,
+        pair_projector: tuple[PairSpaceProjector, ...] | None = None,
     ) -> MolecularGrid:
         """Evaluate selection features and return the reduced grid."""
         if ao_values is None:
@@ -198,7 +276,8 @@ class GridPruner(ABC):
                 ao_basis,
                 spherical=spherical,
             )
-        return self._subset(grid, self.select_indices(ao_values, grid.points))
+        pair_overlap = PairOverlapOperator(ao_values, pair_projector)
+        return self._subset(grid, self.select_indices(pair_overlap, grid.points))
 
     def _selection_values(
         self,
@@ -242,17 +321,16 @@ class BlockTensorDecomposition(GridPruner):
     pivot_function: Callable[..., array[np.int64]] = partial(pivoted_cholesky_pivots)
     pivot_function_kwargs: dict[str, object] = field(default_factory=dict)
 
-    def select_indices(self, values: array[float64], points: array[float64]) -> array[np.int64]:
+    def select_indices(self, pair_overlap: PairOverlapOperator, points: array[float64]) -> array[np.int64]:
         """Return the indices selected by this pruning strategy."""
         selected = self.sorter.sort_indices(points)
 
         while True:
             block_pivots = []
             for block in iter_slices(0, selected.size, self.block_size):
-                block_values = values[selected[block]]
-                pair_overlap = _GridPairOverlapOperator(block_values)
+                block_pair_overlap = pair_overlap.subset(selected[block])
                 pivots = self.pivot_function(
-                    pair_overlap,
+                    block_pair_overlap,
                     tolerance=self.cholesky_tolerance,
                     **self.pivot_function_kwargs,
                 )
@@ -263,33 +341,6 @@ class BlockTensorDecomposition(GridPruner):
             selected = selected[indices]
 
         return selected
-
-
-class _GridPairOverlapOperator(LinearOperator):
-    """Matrix-free AO-pair Gram operator with efficient column access."""
-
-    def __init__(self, values: array[float64]) -> None:
-        self.values = values
-        norms = np.einsum("ij,ij->i", values, values)
-        self.diagonal = norms**2
-        super().__init__(dtype=np.dtype(np.float64), shape=(len(values), len(values)))  # type: ignore[call-arg]
-
-    def _matvec(self, vector: array[float64]) -> array[float64]:
-        weighted_pair_metric = self.values.T @ (self.values * vector[:, None])
-        result = np.einsum("pi,ij,pj->p", self.values, weighted_pair_metric, self.values, optimize=True)
-        return result  # type: ignore[no-any-return]
-
-    def column(self, index: int) -> array[float64]:
-        overlap = self.values @ self.values[index]
-        return overlap**2  # type: ignore[no-any-return]
-
-    def columns(self, indices: array[np.int64]) -> array[float64]:
-        overlap = self.values @ self.values[indices].T
-        return overlap**2
-
-    def dense(self) -> array[float64]:
-        overlap = self.values @ self.values.T
-        return np.ascontiguousarray(overlap**2)
 
 
 @dataclass
@@ -311,13 +362,12 @@ class GlobalDecomposition(GridPruner):
     pivot_function: Callable[..., array[np.int64]] = partial(greedy_pivoted_cholesky_pivots)
     pivot_function_kwargs: dict[str, object] = field(default_factory=dict)
 
-    def select_indices(self, values: array[float64], points: array[float64]) -> array[np.int64]:
+    def select_indices(self, pair_overlap: PairOverlapOperator, points: array[float64]) -> array[np.int64]:
         """Return the indices selected by this pruning strategy."""
         order = self.sorter.sort_indices(points)
-        ordered_values = np.ascontiguousarray(values[order])
-        pair_overlap = _GridPairOverlapOperator(ordered_values)
+        ordered_pair_overlap = pair_overlap.subset(order)
         pivots = self.pivot_function(
-            pair_overlap,
+            ordered_pair_overlap,
             tolerance=self.cholesky_tolerance,
             **self.pivot_function_kwargs,
         )
@@ -341,10 +391,10 @@ class HybridGridPruner(GridPruner):
     )
     global_pruner: GlobalDecomposition = field(default_factory=GlobalDecomposition)
 
-    def select_indices(self, selection_values: array[float64], points: array[float64]) -> array[np.int64]:
+    def select_indices(self, pair_overlap: PairOverlapOperator, points: array[float64]) -> array[np.int64]:
         """Return the indices selected by this pruning strategy."""
-        candidates = self.candidate_pruner.select_indices(selection_values, points)
-        cleanup = self.global_pruner.select_indices(selection_values[candidates], points[candidates])
+        candidates = self.candidate_pruner.select_indices(pair_overlap, points)
+        cleanup = self.global_pruner.select_indices(pair_overlap.subset(candidates), points[candidates])
         return candidates[cleanup]
 
 
@@ -359,6 +409,7 @@ def _fit_coulomb_kernel(
     metric_tolerance: float,
     regularization: float,
     fit_values: array[float64] | None = None,
+    pair_projector: tuple[PairSpaceProjector, ...] | None = None,
 ) -> array[float64]:
     """Fit the THC Coulomb kernel after grid selection has completed."""
     num_aos = ao_basis.num_contracted_spherical_aos if spherical else ao_basis.num_contracted_cartesian_aos
@@ -376,28 +427,27 @@ def _fit_coulomb_kernel(
     metric_inverse_sqrt = (eigenvectors[:, retained] / np.sqrt(eigenvalues[retained])).T
 
     # Compute the sparse pair-overlap matrix for the selected grid points
-    overlap = collocation @ collocation.T
-    sparse_gram = overlap**2
+    sparse_pair_overlap = PairOverlapOperator(collocation, pair_projector)
+    sparse_gram = sparse_pair_overlap.dense()
     sparse_gram += regularization * np.eye(sparse_gram.shape[0])
 
     # Accumulate the right-hand side of the linear system for the kernel matrix
     right_hand_side = np.zeros((sparse_points.shape[0], metric_inverse_sqrt.shape[0]), dtype=np.float64)
     for block in iter_slices(0, len(fit_grid), AO_BLOCK_SIZE):
-        dense_overlap = fit_values[block] @ collocation.T
-        pair_overlap = dense_overlap**2
+        pair_overlap = sparse_pair_overlap.cross(fit_values[block]).T
 
         point_charge = PointCharge(fit_grid.points[block])
         point_potentials = point_charge.collect(aux_basis, spherical=spherical, batch_dim=True)
         right_hand_side += np.linalg.multi_dot((pair_overlap.T, point_potentials, metric_inverse_sqrt.T))
 
     # Solve the linear system for the kernel matrix
-    gram_factor = cho_factor(
+    gram_factor = scipy.linalg.cho_factor(  # type: ignore[type-var]
         sparse_gram,
         lower=True,
         overwrite_a=True,
         check_finite=False,
     )
-    fitted_half_kernel = cho_solve(
+    fitted_half_kernel = scipy.linalg.cho_solve(
         gram_factor,
         right_hand_side,
         overwrite_b=True,
@@ -418,6 +468,7 @@ def tensor_hypercontraction(
     spherical: bool = False,
     metric_tolerance: float = 1e-12,
     regularization: float = 1e-14,
+    pair_projector: tuple[PairSpaceProjector, ...] | None = None,
 ) -> tuple[array[float64], array[float64]]:
     r"""Construct a THC factorisation.
 
@@ -430,6 +481,9 @@ def tensor_hypercontraction(
         spherical: Use real spherical functions instead of Cartesian functions.
         metric_tolerance: Relative eigenvalue cutoff for the auxiliary Coulomb metric.
         regularization: Diagonal shift for the contracted Coulomb fit.
+        pair_projector: Optional tuple of factorized projectors whose pair-space
+            metrics are summed and targeted by both grid selection and Coulomb-kernel
+            fitting. If omitted, the full AO-pair space is used.
 
     Returns:
         The collocation matrix and Coulomb kernel matrix for the tensor hypercontraction factorisation.
@@ -443,6 +497,7 @@ def tensor_hypercontraction(
         ao_basis=ao_basis,
         spherical=spherical,
         ao_values=selection_values,
+        pair_projector=pair_projector,
     )
     sparse_points = pruned_grid.points
     collocation = ao_basis.evaluate(sparse_points, spherical=spherical) * np.sqrt(pruned_grid.weights[:, None])
@@ -456,6 +511,7 @@ def tensor_hypercontraction(
         metric_tolerance=metric_tolerance,
         regularization=regularization,
         fit_values=dense_values if fit_grid is grid else None,
+        pair_projector=pair_projector,
     )
 
     return collocation, kernel
