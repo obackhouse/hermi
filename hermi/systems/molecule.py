@@ -13,14 +13,14 @@ from scipy import constants
 
 from hermi.utils.misc import DefaultHash
 
-ANGSTROM_TO_BOHR = 1e-10 / constants.value("Bohr radius")
-
 if TYPE_CHECKING:
     from typing import Any, Literal
 
     from numpy import float64, int64
 
     from hermi._typing import array
+
+ANGSTROM_TO_BOHR = 1e-10 / constants.value("Bohr radius")
 
 
 @dataclass(frozen=True, eq=False)

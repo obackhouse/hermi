@@ -8,15 +8,16 @@ import numpy as np
 
 from hermi.integrals.collect import _get_ao_selection, _get_selected_shell_groups
 from hermi.integrals.expansion import Expansion
-from hermi.integrals.symmetry import SymmetryN2S1, SymmetryN2S2
+from hermi.integrals.symmetry import SymmetryN2S1, SymmetryN2S2, SymmetryN4S8
 from hermi.operators.coulomb import Coulomb
+from hermi.systems.basis import ShellPairView
 from hermi.utils.angular import num_cartesian_functions, num_spherical_functions
 
 if TYPE_CHECKING:
     from numpy import float64
 
     from hermi._typing import array
-    from hermi.systems.basis import Basis
+    from hermi.systems.basis import Basis, ShellView
 
 
 def get_cauchy_schwarz_metric(
@@ -96,3 +97,72 @@ def get_cauchy_schwarz_metric(
     matrix = matrix[np.ix_(*restore)]
 
     return matrix
+
+
+def _split_shell_view(shell: ShellView, tile_size: int) -> list[ShellView]:
+    """Split a shell group into tiles of contracted shells."""
+    basis = shell.basis
+    starts = basis.contracted_shell_starts(shell.indices)
+    boundaries = np.append(starts, (shell.indices.stop or basis.num_primitive_shells) - (shell.indices.start or 0))
+    shell_start = shell.indices.start or 0
+    shells = []
+    for first in range(0, len(starts), tile_size):
+        last = min(first + tile_size, len(starts))
+        shells.append(basis[slice(shell_start + int(boundaries[first]), shell_start + int(boundaries[last]))])
+    return shells
+
+
+def _get_pair_tiles(basis: Basis, tile_size: int) -> list[ShellPairView]:
+    """Get shell-pair tiles with matching angular momenta on each side."""
+    pair_tiles = []
+    for pair_group in basis.iter_shell_pair_groups(unique=True):
+        shells_i = _split_shell_view(pair_group.shell_i, tile_size)
+        shells_j = _split_shell_view(pair_group.shell_j, tile_size)
+        same_group = pair_group.shell_i.indices == pair_group.shell_j.indices
+        for i, shell_i in enumerate(shells_i):
+            for j, shell_j in enumerate(shells_j):
+                if same_group and i > j:
+                    continue
+                pair_tile = basis[shell_i, shell_j]
+                assert isinstance(pair_tile, ShellPairView)
+                pair_tiles.append(pair_tile)
+    return pair_tiles
+
+
+def collect_coulomb_22(
+    basis: Basis,
+    *,
+    threshold: float = 1e-12,
+    tile_size: int = 4,
+) -> array[float64]:
+    r"""Collect Coulomb integrals using tiled Cauchy--Schwarz screening.
+
+    Args:
+        basis: Basis set.
+        threshold: Skip a tile quartet when the product of its pair metrics is at most this value.
+        tile_size: Number of contracted shells in each side of a shell-pair tile.
+
+    Returns:
+        Full Cartesian Coulomb integral tensor in the original basis order.
+    """
+    basis, restore = basis.ordered_by_angular_momentum()
+    metric = get_cauchy_schwarz_metric(basis)
+    pair_tiles = _get_pair_tiles(basis, tile_size)
+    pair_metrics = np.asarray(
+        [np.max(metric[pair.cartesian_ao_slices]) for pair in pair_tiles],
+        dtype=np.float64,
+    )
+
+    shape = (basis.num_contracted_cartesian_aos,) * 4
+    matrix = np.zeros(shape, dtype=np.float64)
+    symmetry = SymmetryN4S8(shape)
+    coulomb = Coulomb()
+
+    for i, pair_ab in enumerate(pair_tiles):
+        active = np.flatnonzero(pair_metrics[i] * pair_metrics[i:] > threshold) + i
+        for j in active:
+            pair_cd = pair_tiles[j]
+            block = coulomb.contract((pair_ab, pair_cd))
+            symmetry.set_value(matrix, (*pair_ab.cartesian_ao_slices, *pair_cd.cartesian_ao_slices), block)
+
+    return matrix[np.ix_(restore, restore, restore, restore)]  # type: ignore[arg-type]

@@ -51,7 +51,7 @@ def test_tensor_hypercontraction_against_pyscf(example_system, normalized_refere
     molecule = example_system.molecule
     ao_basis = example_system.basis
     aux_basis = Basis.from_molecule(molecule, "aug-cc-pvqz-rifit")
-    grid = MolecularGrid.from_molecule(molecule, radial_order=40, angular_order=10)
+    grid = MolecularGrid.from_becke(molecule, radial_order=40, angular_order=10)
 
     collocation, kernel = tensor_hypercontraction(ao_basis, aux_basis, grid, spherical=spherical)
     actual = np.einsum(
