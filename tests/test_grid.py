@@ -6,17 +6,18 @@ import numpy as np
 import pytest
 from scipy.special import gamma
 
+from hermi.systems._grid_data import BRAGG_RADII_ANGSTROM
 from hermi.systems.grid import (
     MolecularGrid,
     _angular_grid,
     _becke_partition_weights,
     _radial_integrals,
     _radial_overlap,
+    _sg1_pruned_angular_points,
     _simultaneous_diagonalize,
-    _treutler_pruned_angular_points,
     _treutler_radial_grid,
 )
-from hermi.systems.molecule import Molecule
+from hermi.systems.molecule import ANGSTROM_TO_BOHR, Molecule
 
 
 def test_angular_grid_has_unit_directions_and_spherical_weights() -> None:
@@ -130,7 +131,7 @@ def test_from_becke_builds_expected_lebedev_grid() -> None:
     radial_nodes, _ = _treutler_radial_grid(radial_order, 1, 1.0)
     max_angular_points = _angular_grid(angular_order)[0].shape[0]
     expected_points_per_atom = int(
-        _treutler_pruned_angular_points(radial_nodes, max_angular_points, 1).sum()
+        _sg1_pruned_angular_points(radial_nodes, max_angular_points, 1).sum()
     )
 
     assert len(grid) == 2 * expected_points_per_atom
@@ -185,7 +186,36 @@ def test_from_becke_builds_a_single_atom_grid() -> None:
     grid = MolecularGrid.from_becke(molecule, radial_order=radial_order, angular_order=angular_order)
     radial_nodes, _ = _treutler_radial_grid(radial_order, 1, 1.0)
     max_angular_points = _angular_grid(angular_order)[0].shape[0]
-    expected_points = int(_treutler_pruned_angular_points(radial_nodes, max_angular_points, 1).sum())
+    expected_points = int(_sg1_pruned_angular_points(radial_nodes, max_angular_points, 1).sum())
 
     assert len(grid) == expected_points
     assert np.all(grid.weights > 0)
+
+
+@pytest.mark.parametrize(
+    ("max_angular_points", "expected"),
+    [
+        (38, [6, 38, 38, 38, 38]),
+        (86, [6, 38, 86, 86, 86]),
+        (230, [6, 38, 86, 194, 86]),
+    ],
+)
+def test_sg1_angular_pruning_uses_sg1_regions_and_caps(
+    max_angular_points: int,
+    expected: list[int],
+) -> None:
+    atomic_radius = 1.2308  # SG-1 radius for carbon, in Bohr.
+    radial_nodes = atomic_radius * np.array([0.1, 0.3, 0.7, 2.0, 4.0])
+
+    actual = _sg1_pruned_angular_points(radial_nodes, max_angular_points, 6)
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_sg1_angular_pruning_falls_back_for_heavier_elements() -> None:
+    atomic_radius = np.sqrt(BRAGG_RADII_ANGSTROM[26]) * ANGSTROM_TO_BOHR
+    radial_nodes = atomic_radius * np.array([0.05, 0.2, 0.6, 1.2, 3.0])
+
+    actual = _sg1_pruned_angular_points(radial_nodes, 86, 26)
+
+    np.testing.assert_array_equal(actual, [6, 38, 86, 86, 86])

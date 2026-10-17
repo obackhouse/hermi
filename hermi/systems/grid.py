@@ -13,7 +13,12 @@ import scipy.optimize
 import scipy.special
 
 from hermi.operators.overlap import Overlap
-from hermi.systems._grid_data import BRAGG_RADII_ANGSTROM, LEBEDEV_ORBITS, TREUTLER_XI
+from hermi.systems._grid_data import (
+    BRAGG_RADII_ANGSTROM,
+    LEBEDEV_ORBITS,
+    SG1_RADII_BOHR,
+    TREUTLER_XI,
+)
 from hermi.systems.molecule import ANGSTROM_TO_BOHR
 from hermi.utils.misc import DefaultHash
 
@@ -252,7 +257,7 @@ def _assemble_atom_centred_grid(
     points: list[array[float64]] = []
     weights: list[array[float64]] = []
     for atom_index, (position, (radius, radial_weights)) in enumerate(zip(atom_positions, radial_rules, strict=True)):
-        angular_points_by_radius = _treutler_pruned_angular_points(
+        angular_points_by_radius = _sg1_pruned_angular_points(
             radius,
             max_angular_points,
             molecule.elements[atom_index].atomic_charge,
@@ -352,20 +357,16 @@ def _lebedev_grid(angular_points: int) -> tuple[array[float64], array[float64]]:
     return np.asarray(points, dtype=np.float64), np.asarray(weights, dtype=np.float64)
 
 
-def _treutler_pruned_angular_points(
+def _sg1_pruned_angular_points(
     radial_nodes: array[float64],
     max_angular_points: int,
     atomic_charge: int,
 ) -> array[np.int64]:
-    """Return radius-dependent Lebedev rule sizes for Treutler radial shells.
+    """Return SG-1 Lebedev rule sizes, capped by the requested angular grid.
 
-    The radial regions follow SG1-style element-specific cutoffs. Their angular
-    resolutions scale from the 50-point rule with ``max_angular_points``, while
-    retaining fewer points near the nucleus.
+    SG-1 radii and radial cutoffs are defined through argon. Heavier atoms use
+    the existing Bragg-radius estimate for the region boundaries.
     """
-    if max_angular_points <= 6:
-        return np.full(radial_nodes.size, max_angular_points, dtype=np.int64)
-
     if atomic_charge <= 2:
         radial_cutoffs = np.array([0.25, 0.5, 1.0, 4.5])
     elif atomic_charge <= 10:
@@ -373,14 +374,13 @@ def _treutler_pruned_angular_points(
     else:
         radial_cutoffs = np.array([0.1, 0.4, 0.8, 2.5])
 
-    atomic_radius = np.sqrt(BRAGG_RADII_ANGSTROM[atomic_charge]) * ANGSTROM_TO_BOHR
+    if atomic_charge < len(SG1_RADII_BOHR):
+        atomic_radius = SG1_RADII_BOHR[atomic_charge]
+    else:
+        atomic_radius = np.sqrt(BRAGG_RADII_ANGSTROM[atomic_charge]) * ANGSTROM_TO_BOHR
     regions = (radial_nodes[:, None] / atomic_radius > radial_cutoffs).sum(axis=1)
 
-    # At a maximum rule of 50 points, this gives 6, 38, 50, 50, 50 points.
-    # Scale the reduced rules with the requested angular resolution, then map
-    # each target to an available nonnegative-weight Lebedev rule.
-    target_points = np.array([6, 38, 50, 50, 50], dtype=np.float64)
-    target_points *= max_angular_points / 50
+    target_points = np.minimum(np.array([6, 38, 86, 194, 86]), max_angular_points)
     available = np.array(
         [
             size
@@ -390,7 +390,7 @@ def _treutler_pruned_angular_points(
         dtype=np.int64,
     )
     available.sort()
-    rule_indices = np.minimum(np.searchsorted(available, target_points, side="left"), available.size - 1)
+    rule_indices = np.searchsorted(available, target_points, side="right") - 1
     return available[rule_indices][regions]  # type: ignore[no-any-return]
 
 
@@ -422,8 +422,9 @@ class MolecularGrid(DefaultHash):
         Args:
             molecule: Molecule with coordinates.
             radial_order: Number of Treutler-Ahlrichs radial points per atom.
-            angular_order: Maximum angular resolution. Radial-region pruning uses smaller Lebedev rules near each
-                nucleus and refines them as this order increases.
+            angular_order: Maximum angular resolution. SG-1 radial-region pruning
+                selects Lebedev rules up to this maximum. Its exact radii are defined
+                through argon; heavier elements use a Bragg-radius extension.
             radial_scale: Scale applied to the Treutler-Ahlrichs radial nodes.
             becke_iterations: Number of cubic Becke switching steps.
 
@@ -433,6 +434,8 @@ class MolecularGrid(DefaultHash):
         References:
             A. D. Becke, J. Chem. Phys. 88, 2547–2553 (1988).
             https://doi.org/10.1063/1.454033
+            P. M. W. Gill, B. G. Johnson, and J. A. Pople, Chem. Phys. Lett. 209,
+            506–512 (1993). https://doi.org/10.1016/0009-2614(93)80125-9
             A. Treutler and R. Ahlrichs, J. Chem. Phys. 102, 346 (1995).
             https://doi.org/10.1063/1.469408
             V. I. Lebedev and D. N. Laikov, Dokl. Math. 59, 477–481 (1999).

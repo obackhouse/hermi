@@ -8,6 +8,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Callable
 
 import numpy as np
+from scipy.linalg import cho_factor, cho_solve
 from scipy.sparse.linalg import LinearOperator
 
 from hermi.operators.coulomb import Coulomb
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
     from hermi._typing import array
     from hermi.systems.basis import Basis
 
-AO_BLOCK_SIZE = 2048
+AO_BLOCK_SIZE = 4096
 
 
 def _quantize_points(points: array[float64], scale: int) -> array[np.int64]:
@@ -367,28 +368,44 @@ def _fit_coulomb_kernel(
             ao_values = ao_basis.evaluate(fit_grid.points[block], spherical=spherical)
             fit_values[block] = ao_values * np.sqrt(fit_grid.weights[block, None])
 
+    # Compute the inverse square root of the auxiliary Coulomb metric
     coulomb = Coulomb()
     metric = coulomb.collect(aux_basis, (1, 1), spherical=spherical)
     eigenvalues, eigenvectors = np.linalg.eigh(metric)
     retained = eigenvalues > metric_tolerance * np.max(eigenvalues)
     metric_inverse_sqrt = (eigenvectors[:, retained] / np.sqrt(eigenvalues[retained])).T
 
+    # Compute the sparse pair-overlap matrix for the selected grid points
     overlap = collocation @ collocation.T
-    right_hand_side = np.zeros((sparse_points.shape[0], metric_inverse_sqrt.shape[0]), dtype=np.float64)
     sparse_gram = overlap**2
     sparse_gram += regularization * np.eye(sparse_gram.shape[0])
 
+    # Accumulate the right-hand side of the linear system for the kernel matrix
+    right_hand_side = np.zeros((sparse_points.shape[0], metric_inverse_sqrt.shape[0]), dtype=np.float64)
     for block in iter_slices(0, len(fit_grid), AO_BLOCK_SIZE):
         dense_overlap = fit_values[block] @ collocation.T
         pair_overlap = dense_overlap**2
 
         point_charge = PointCharge(fit_grid.points[block])
         point_potentials = point_charge.collect(aux_basis, spherical=spherical, batch_dim=True)
-        half_kernel = point_potentials @ metric_inverse_sqrt.T
-        right_hand_side += pair_overlap.T @ half_kernel
+        right_hand_side += np.linalg.multi_dot((pair_overlap.T, point_potentials, metric_inverse_sqrt.T))
 
-    fitted_half_kernel = np.linalg.solve(sparse_gram, right_hand_side)
-    return fitted_half_kernel @ fitted_half_kernel.T
+    # Solve the linear system for the kernel matrix
+    gram_factor = cho_factor(
+        sparse_gram,
+        lower=True,
+        overwrite_a=True,
+        check_finite=False,
+    )
+    fitted_half_kernel = cho_solve(
+        gram_factor,
+        right_hand_side,
+        overwrite_b=True,
+        check_finite=False,
+    )
+    kernel = fitted_half_kernel @ fitted_half_kernel.T
+
+    return kernel
 
 
 def tensor_hypercontraction(

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
+from scipy.linalg import solve_triangular
 from scipy.linalg.lapack import dpstrf
 
 if TYPE_CHECKING:
@@ -98,8 +99,20 @@ def randomized_pivoted_cholesky_pivots(
     block_size: int,
     rng: np.random.Generator,
 ) -> array[np.int64]:
-    """Return accelerated randomized pivots from a matrix-free PSD operator."""
+    """Return accelerated randomized pivots from a matrix-free PSD operator.
+
+    Proposals are drawn in blocks and rejection-sampled using their small residual
+    submatrix. Accepted columns are then added to the Cholesky factor together, so
+    the updates over the full point set use matrix operations rather than a Python
+    loop over individual columns.
+    """
+    if block_size < 1:
+        raise ValueError("block_size must be positive")
+
     num_points = matrix.shape[0]
+    if num_points == 0:
+        return np.empty(0, dtype=np.int64)
+
     residual = matrix.diagonal.copy()
     capacity = min(num_points, 64)
     factor = np.empty((num_points, capacity), dtype=np.float64)
@@ -122,32 +135,73 @@ def randomized_pivoted_cholesky_pivots(
         if rank:
             block_residual -= factor[:, :rank] @ factor[proposals, :rank].T
 
-        for column_index, pivot in enumerate(proposals):
-            if rank == num_points or float(np.max(residual)) <= tolerance:
-                break
+        # Rejection sampling works on the small residual Gram matrix of the
+        # proposals. Its Schur complement is updated only when a proposal passes
+        proposal_residual = block_residual[proposals].copy()
+        proposal_residual = (proposal_residual + proposal_residual.T) * 0.5
+        proposal_factor = np.zeros((block_size, block_size), dtype=np.float64)
+        proposal_envelopes = proposal_diagonal[proposals]
+        accepted = np.empty(block_size, dtype=np.int64)
+        num_accepted = 0
 
-            pivot_residual = float(residual[pivot])
-            envelope = float(proposal_diagonal[pivot])
+        for proposal_index in range(block_size):
+            pivot_residual = float(proposal_residual[proposal_index, proposal_index])
+            envelope = float(proposal_envelopes[proposal_index])
             if pivot_residual <= 0.0 or envelope <= 0.0:
                 continue
             acceptance = min(pivot_residual / envelope, 1.0)
             if rng.random() >= acceptance:
                 continue
 
-            column = block_residual[:, column_index] / np.sqrt(pivot_residual)
-            if rank == capacity:
-                capacity = min(num_points, 2 * capacity)
-                expanded_factor = np.empty((num_points, capacity), dtype=np.float64)
-                expanded_factor[:, :rank] = factor[:, :rank]
-                factor = expanded_factor
+            accepted[num_accepted] = proposal_index
+            num_accepted += 1
+            root = np.sqrt(pivot_residual)
+            proposal_factor[proposal_index, proposal_index] = root
+            if proposal_index + 1 < block_size:
+                lower_column = proposal_residual[proposal_index + 1 :, proposal_index] / root
+                proposal_factor[proposal_index + 1 :, proposal_index] = lower_column
+                proposal_residual[proposal_index + 1 :, proposal_index + 1 :] -= np.outer(lower_column, lower_column)
 
-            factor[:, rank] = column
-            residual -= column**2
-            np.maximum(residual, 0.0, out=residual)
-            residual[pivot] = 0.0
-            pivots[rank] = pivot
-            rank += 1
-            block_residual -= np.outer(column, column[proposals])
+        if num_accepted == 0:
+            continue
+
+        accepted = accepted[:num_accepted]
+        lower = proposal_factor[np.ix_(accepted, accepted)]
+        panel = solve_triangular(
+            lower,
+            block_residual[:, accepted].T,
+            lower=True,
+            check_finite=False,
+        ).T
+
+        # Preserve the stopping criterion even if it is reached inside a panel
+        residual_path = np.cumsum(panel * panel, axis=1)
+        residual_path *= -1.0
+        residual_path += residual[:, None]
+        np.maximum(residual_path, 0.0, out=residual_path)
+        stop_positions = np.flatnonzero(residual_path.max(axis=0) <= tolerance)
+        stopped = stop_positions.size > 0
+        if stopped:
+            panel_size = int(stop_positions[0]) + 1
+            panel = panel[:, :panel_size]
+            accepted = accepted[:panel_size]
+
+        panel_rank = panel.shape[1]  # type: ignore[misc]
+        if rank + panel_rank > capacity:
+            capacity = min(num_points, max(rank + panel_rank, 2 * capacity))
+            expanded_factor = np.empty((num_points, capacity), dtype=np.float64)
+            expanded_factor[:, :rank] = factor[:, :rank]
+            factor = expanded_factor
+
+        factor[:, rank : rank + panel_rank] = panel
+        new_pivots = proposals[accepted]
+        pivots[rank : rank + panel_rank] = new_pivots
+        residual -= np.einsum("ij,ij->i", panel, panel)
+        np.maximum(residual, 0.0, out=residual)
+        residual[new_pivots] = 0.0
+        rank += panel_rank
+        if stopped:
+            break
 
     return np.sort(pivots[:rank])
 

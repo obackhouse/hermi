@@ -2,8 +2,8 @@
 
 Lebedev-Laikov orbit data adapted from PySCF, Apache-2.0; original
 quadrature reference: V. I. Lebedev and D. N. Laikov, Dokl. Math. 59,
-477–481 (1999). Bragg radii and Treutler scale factors follow PySCF
-data, also Apache-2.0.
+477–481 (1999). Bragg radii, SG-1 radii, and Treutler scale factors
+follow PySCF data, also Apache-2.0.
 """
 
 from __future__ import annotations
@@ -1593,3 +1593,26 @@ TREUTLER_XI = [
     1.5,
     1.5,
 ]
+
+# SG-1 atomic radii in Bohr, indexed by atomic number (ghost through argon).
+SG1_RADII_BOHR = (
+    1.0000,
+    1.0000,
+    0.5882,
+    3.0769,
+    2.0513,
+    1.5385,
+    1.2308,
+    1.0256,
+    0.8791,
+    0.7692,
+    0.6838,
+    4.0909,
+    3.1579,
+    2.5714,
+    2.1687,
+    1.8750,
+    1.6514,
+    1.4754,
+    1.3333,
+)
